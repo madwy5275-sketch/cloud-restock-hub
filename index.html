@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=14"></script>
-<script src="rh-boot.js?v=14"></script>
-<script type="module" src="firebase-shim.js?v=14"></script>
+<script src="config.js?v=15"></script>
+<script src="rh-boot.js?v=15"></script>
+<script type="module" src="firebase-shim.js?v=15"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -431,6 +431,7 @@ function can(action, o){
     case "resume": return (any || t === "planning") && st === "hold";
     case "cancel": return (any || t === "planning") && ["draft","changes","fashion","hold"].includes(st);
     case "delete": return (any || t === "planning") && st === "draft";
+    case "reopen": return (any || t === "planning") && (st === "cancelled" || !!(o && o.closedShort));
     case "capacity": return any || t === "planning" || t === "production";
     case "comment": return !!t;
   }
@@ -770,6 +771,7 @@ function renderDrawer(){
   if (can("hold", o)) side.push(`<button class="btn sm" data-act="hold" type="button">Put on hold</button>`);
   if (can("resume", o)) side.push(`<button class="btn sm primary" data-act="resume" type="button">Resume</button>`);
   if (can("cancel", o)) side.push(`<button class="btn sm danger" data-act="cancel" type="button">Cancel request</button>`);
+  if (can("reopen", o)) side.push(`<button class="btn sm primary" data-act="reopen" type="button" title="${o.closedShort ? "Undo the closing: the missing pieces are expected from the factory again" : "Bring it back to Draft, then send it to Production again"}">↺ Restock again</button>`);
   if (!S.team && !S.readOnly) actions = `<div class="ro">Pick your team at the top right to see the actions for your team.</div>`;
   if (S.readOnly) actions = `<div class="ro">You can view this request. Ask the owner for Contributor access to act on it.</div>`;
   L.innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-label="Request ${esc(o.ref||"")}">
@@ -901,6 +903,7 @@ async function onAct(act){
     }
   }
   else if (act === "hold") { if (await write(() => setStatus(o, "hold", {prevStatus:o.status}, withNote("Put on hold")), "On hold")) clearNote(); }
+  else if (act === "reopen") { confirmBox("Restock this colour again?", o.closedShort ? "The closing is undone: it goes back to Partly received and the missing pieces are expected again." : "It goes back to Draft with the same sizes. Edit if needed, then send it to Production again.", "Restock again", async () => { if (await write(() => reopenOrder(o, withNote("Restocked again")), "Restocked again")) clearNote(); }); }
   else if (act === "resume") { if (await write(() => setStatus(o, o.prevStatus || "draft", {}, withNote("Resumed")), "Resumed")) clearNote(); }
   else if (act === "cancel") confirmBox("Cancel this request?", "It stays in the history as cancelled. Production will see it is no longer needed.", "Cancel request", async () => {
     if (await write(() => setStatus(o, "cancelled", {prevStatus:o.status}, withNote("Request cancelled")), "Request cancelled")) clearNote();
@@ -1329,11 +1332,19 @@ function batchManageHTML(id){
     <div class="hint">${os.length} request${os.length===1?"":"s"} in it: ${direct.length} not started yet (cancel at once), ${ask.length} already approved or in production (Production must confirm), ${rec.length} received (kept), ${can_.length} cancelled.</div>
     <label class="hint">Reason (Production sees it)<input class="inp" id="bWhy" placeholder="e.g. sales dropped, merged into December batch"></label>
     <div class="acts"><button class="btn danger" id="bCancelAll" type="button" ${direct.length + ask.length ? "" : "disabled"}>Cancel whole batch</button>
-    <button class="btn danger" id="bDelete" type="button" ${deletable || S.isOwner ? "" : "disabled"}>Delete batch</button></div>
+    <button class="btn danger" id="bDelete" type="button" ${deletable || S.isOwner ? "" : "disabled"}>Delete batch</button>${can_.length || os.some(o => o.closedShort) ? `<button class="btn primary" id="bReopen" type="button">↺ Restock again (${can_.length + os.filter(o => o.closedShort).length} cancelled)</button>` : ""}</div>
     <div class="hint">${deletable ? "Delete removes the batch and all its requests and comments for everyone (nothing in it reached Production)." : S.isOwner ? `Delete removes the batch and all ${os.length} requests and comments for everyone, including ${ask.length + rec.length} that Production already approved or received — they disappear from Production's board too. Cancel keeps the history instead.` : "Delete is only possible while nothing in the batch was approved by Production (or by the page owner). Use Cancel instead: it keeps the history."}</div></div>`;
 }
 function bindBatchManage(id){
   const c = $("#bCancelAll"), d = $("#bDelete"); if (!c) return;
+  const ro = $("#bReopen"); if (ro) ro.onclick = () => {
+    const list = S.orders.filter(o => o.cycle === id && can("reopen", o));
+    confirmBox(`Restock ${list.length} colour${list.length===1?"":"s"} again?`, "Cancelled colours go back to Draft (same sizes; edit, then send to Production). Closed-short colours go back to Partly received.", "Restock again", async () => {
+      let n = 0; const why = ($("#bWhy").value || "").trim();
+      const ok = await write(async () => { await pmap(list, async o => { await reopenOrder(o, "Restocked again (whole batch)" + (why ? " — " + why : "")); n++; }); if (S.batches[id] && S.batches[id].cancelledAt) await S.db.doc("batches/" + id).update({cancelledAt:null, cancelReason:null, updatedAt:Date.now(), updatedBy:S.me.id}); }, null);
+      toast(`${n} colour${n===1?"":"s"} restocked again` + (ok ? "" : " before an error")); $("#batchModal")?.remove(); render();
+    });
+  };
   c.onclick = () => {
     const why = ($("#bWhy").value || "").trim();
     if (!why) { toast("Write the reason first."); $("#bWhy").focus(); return; }
@@ -1564,6 +1575,10 @@ function recvSummaryHTML(list, compact){
   return `<span class="rs${compact ? " compact" : ""}">${parts.join("")}</span>`;
 }
 /* cancel: if something already arrived, close it as received (the rest is cancelled) instead of wiping it */
+async function reopenOrder(o, text){
+  if (o.closedShort) return setStatus(o, "partial", {closedShort:null, pendingChange:null}, `${text} — closed short undone: the ${fmt(o.closedShort.qty||0)} missing pieces are expected again`);
+  return setStatus(o, "draft", {prevStatus:null, pendingChange:null}, `${text} — back to Draft: edit if needed and send to Production again`);
+}
 async function cancelOrder(o, text){
   const rec = receivedOf(o);
   if (rec > 0) {
@@ -1637,6 +1652,8 @@ function renderStyleDrawer(){
     ? `<div class="panel"><b>Change quantities</b><div class="hint">Type the new quantities in the table. ${S.team === "admin" ? "As admin the change applies at once." : "Production sees the change at once and confirms it."}</div><label>Reason<textarea class="inp" id="sChNote" placeholder="e.g. sales dropped, reduce M and L"></textarea></label><div class="acts"><button class="btn primary" data-sact="sendChange" type="button">${S.team === "admin" ? "Apply change" : "Send to Production"}</button><button class="btn" data-smode="" type="button">Cancel</button></div></div>`
     : `<div class="panel"><b>Change this style</b><div class="hint">${S.team === "admin" ? "You are admin: changes and cancellations apply at once." : "Production sees it at once and confirms it."}</div><label>Reason<input class="inp" id="sWhy" placeholder="e.g. sales dropped, merged into next batch"></label><div class="acts"><button class="btn" data-smode="change" type="button">Increase / decrease qty</button><button class="btn danger" data-sact="askCancelAll" type="button">${S.team === "admin" ? "Cancel" : "Ask to cancel"} ${toChange.length} colour${toChange.length>1?"s":""}</button></div></div>`;
   if (toRecv.length && mode !== "receive" && mode !== "change" && (S.team === "production" || S.team === "admin")) acts += `<div class="acts"><button class="btn" data-smode="receive" type="button">Record a delivery</button></div>`;
+  const toReopen = items.filter(o => can("reopen", o));
+  if (toReopen.length) acts += `<div class="panel"><b>Cancelled by mistake?</b><div class="hint">Cancelled colours go back to Draft (same sizes; edit, then send to Production again). Closed-short colours go back to Partly received.</div><div class="acts"><button class="btn primary" data-sact="reopenAll" type="button">↺ Restock again ${toReopen.length} colour${toReopen.length>1?"s":""}</button></div></div>`;
   if (toCancel.length) acts += `<div class="acts"><button class="btn sm danger" data-sact="cancelAll" type="button">Cancel ${toCancel.length} colour${toCancel.length>1?"s":""} (not sent yet)</button></div>`;
   if (!S.team && !S.readOnly) acts = `<div class="ro">Pick your team at the top right to see the actions for your team.</div>`;
   if (S.readOnly) acts = `<div class="ro">You can view this style. Ask the owner for Contributor access to act on it.</div>`;
@@ -1711,6 +1728,7 @@ async function onStyleAct(act){
   }
   else if (act === "confirmAll") await run(items.filter(o => can("confirmChange", o)), o => confirmChange(o, withNote("Production confirmed")), "Confirmed");
   else if (act === "rejectAll") { if (!note) { toast("Write the reason in the comment box first."); return; } await run(items.filter(o => can("confirmChange", o)), async o => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Production could not apply the change — " + note); }, "Declined"); }
+  else if (act === "reopenAll") { const list = items.filter(o => can("reopen", o)); confirmBox(`Restock ${list.length} colour${list.length===1?"":"s"} again?`, "Cancelled → Draft (edit, then send to Production). Closed short → Partly received.", "Restock again", () => run(list, o => reopenOrder(o, withNote("Restocked again (whole style)")), "Restocked again")); }
   else if (act === "cancelAll") confirmBox("Cancel the colours not yet sent?", "They stay in the history as cancelled.", "Cancel them", () => run(items.filter(o => can("cancel", o)), o => setStatus(o, "cancelled", {prevStatus:o.status}, withNote("Request cancelled (whole style)")), "Cancelled"));
 }
 async function applyReceipt(o, now, date, suffix){

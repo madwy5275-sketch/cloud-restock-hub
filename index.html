@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=9"></script>
-<script src="rh-boot.js?v=9"></script>
-<script type="module" src="firebase-shim.js?v=9"></script>
+<script src="config.js?v=10"></script>
+<script src="rh-boot.js?v=10"></script>
+<script type="module" src="firebase-shim.js?v=10"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -548,14 +548,16 @@ function cardHTML(o){
   </button>`;
 }
 function renderBoard(list){
-  const cols = S.fClosed ? BOARD_COLS.concat([["cancelled","hold"]]) : BOARD_COLS;
+  const cols = BOARD_COLS.concat([["__closed"]]).concat(S.fClosed ? [["cancelled","hold"]] : []);
   return `<div class="board">` + cols.map(ids => {
-    const items = list.filter(o => ids.includes(o.status)); const s0 = ST[ids[0]];
+    const items = ids[0] === "__closed" ? list.filter(o => o.closedShort) : list.filter(o => ids.includes(o.status) && !(ids[0] === "received" && o.closedShort));
+    if (ids[0] === "__closed" && !items.length) return "";
+    const s0 = ids[0] === "__closed" ? {name:"Closed short", owner:"Done", dot:"var(--warn)"} : ST[ids[0]];
     let bulk = "";
     if (ids[0] === "approved") { const n = items.filter(o => can("start", o)).length; if (n > 1) bulk = `<button class="btn sm" data-go="startAll" type="button">Mark all ${n} started</button>`; }
     if (["approved","inprod","partial"].includes(ids[0]) && items.length && (S.team === "production" || S.team === "admin") && !S.readOnly) bulk += ` <button class="btn sm" data-go="recv" type="button">Import receiving</button>`;
     if (ids[0] === "draft") { const n = items.filter(o => o.status === "draft" && qtyOf(o) > 0).length; if (n > 1 && can("submit", {status:"draft"})) bulk = `<button class="btn sm" data-bulk="submit" type="button">Send all ${n} to Production</button>`; }
-    return `<section class="col"><div class="col-h"><span class="dot" style="background:${s0.dot}"></span><h3>${esc(ids[0]==="draft"?"Draft & changes":ids[0]==="cancelled"?"Cancelled & on hold":s0.name)}</h3><span class="cnt">${items.length}</span><span class="owner">${esc(s0.owner)}</span></div>
+    return `<section class="col"><div class="col-h"><span class="dot" style="background:${s0.dot}"></span><h3 title="${ids[0]==="__closed"?"Cancelled after part of it arrived: received pieces stay, the rest will not come":""}">${esc(ids[0]==="draft"?"Draft & changes":ids[0]==="cancelled"?"Cancelled & on hold":s0.name)}</h3><span class="cnt">${items.length}</span><span class="owner">${esc(s0.owner)}</span></div>
       ${bulk?`<div style="padding:8px 10px 0">${bulk}</div>`:""}
       <div class="col-b">${items.length ? styleGroups(items).map(([k, its]) => styleCardHTML(k, its)).join("") : `<div class="empty-col">${emptyText(ids[0])}</div>`}</div></section>`;
   }).join("") + `</div>`;

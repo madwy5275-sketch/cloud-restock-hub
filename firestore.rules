@@ -5,9 +5,9 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.token.email != null
-      && request.auth.token.email.lower() in ['amr96578@gmail.com', 'mohamed.adawy@garments-group.com']; }
+      && request.auth.token.email.lower() in ['madwy5275@gmail.com', 'amr96578@gmail.com', 'mohamed.adawy@garments-group.com']; }
     function roleDoc() { return get(/databases/$(database)/documents/roles/$(request.auth.uid)); }
-    function team() { return exists(/databases/$(database)/documents/roles/$(request.auth.uid)) ? roleDoc().data.team : ''; }
+    function team() { return exists(/databases/$(database)/documents/roles/$(request.auth.uid)) ? roleDoc().data.get('team', '') : ''; }
     function isTeam(t) { return isAdmin() || (signedIn() && team() == t); }
     function member() { return isAdmin() || (signedIn() && team() in ['planning', 'production', 'fashion', 'viewer']); }
     function planning() { return isTeam('planning'); }
@@ -20,11 +20,11 @@ service cloud.firestore {
                     'category', 'price', 'season', 'gender', 'reason', 'createdBy', 'createdAt', 'images'];
       return !k.hasAny(locked)
         // sizes/qty only change when Production confirms Planning's own change request
-        && (!k.hasAny(['sizes', 'qty']) || (resource.data.pendingChange != null && request.resource.data.sizes == resource.data.pendingChange.sizes))
+        && (!k.hasAny(['sizes', 'qty']) || (resource.data.get('pendingChange', null) != null && request.resource.data.sizes == resource.data.pendingChange.get('sizes', null)))
         // the quantities Production schedules must equal the requested sizes
-        && (!k.hasAny(['production']) || !('sizes' in request.resource.data.production) || request.resource.data.production.sizes == request.resource.data.sizes)
+        && (!k.hasAny(['production']) || !('sizes' in request.resource.data.production) || request.resource.data.production.sizes == request.resource.data.get('sizes', null))
         // Production cannot invent change requests
-        && (!k.hasAny(['pendingChange']) || request.resource.data.pendingChange == null);
+        && (!k.hasAny(['pendingChange']) || request.resource.data.get('pendingChange', null) == null);
     }
 
     match /users/{uid} { allow read: if member() || (signedIn() && request.auth.uid == uid); allow write: if signedIn() && request.auth.uid == uid; }

@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=17"></script>
-<script src="rh-boot.js?v=17"></script>
-<script type="module" src="firebase-shim.js?v=17"></script>
+<script src="config.js?v=18"></script>
+<script src="rh-boot.js?v=18"></script>
+<script type="module" src="firebase-shim.js?v=18"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -252,7 +252,7 @@ textarea.inp{height:auto;min-height:64px;padding:8px 10px;resize:vertical;width:
     <button id="btnExport" class="btn" type="button" hidden>Export</button>
     <button id="btnRoles" class="btn" type="button" hidden>Team access</button>
     <div class="who" title="Your team"><img id="meAv" alt="" onerror="this.hidden=true"><select id="teamSel" aria-label="Your team">
-      <option value="">Pick your team</option><option value="planning">Planning &amp; Merch</option><option value="fashion">Fashion (view &amp; comment)</option><option value="production">Production</option><option value="admin">All teams (admin)</option>
+      <option value="">Pick your team</option><option value="planning">Merch / Planning</option><option value="fashion">Fashion (view &amp; comment)</option><option value="production">Production</option><option value="admin">All teams (admin)</option>
     </select></div>
   </div>
 </div></header>
@@ -1455,16 +1455,22 @@ function openGuide(){
 
 /* ---------- team access (owner assigns each person's team) ---------- */
 S.members = {}; S.roles = {}; S.rolePeople = {};
-const ROLE_OPTS = [["","No access"],["viewer","View only"],["planning","Planning & Merch"],["production","Production"],["fashion","Fashion (view & comment)"],["admin","Admin (everything)"]];
+const ROLE_OPTS = [["","No access"],["admin","Admin (everything)"],["planning","Merch / Planning"],["production","Production"],["fashion","Fashion (view & comment)"],["viewer","View only"]];
 function openRoles(){
   $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="rolesModal"><div class="box" role="dialog" aria-label="Team access" style="width:min(620px,100%)">
     <div class="mh"><h2>Team access</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
     <div class="mb">
       <div class="hint">Only you (the owner) can change this. Each person sees only the buttons of the team you give them and cannot switch team. “View only” people see everything but cannot change anything; “No access” removes them. Share the page with them first (Share → can use), then they appear here after they open it once — or find them below.</div>
-      <div style="display:flex;gap:8px"><input class="inp" id="roleQ" type="search" placeholder="Find someone in your organisation by name"></div><div id="roleHits"></div>
+      ${window.__rhStandalone ? `<div class="panel"><b>Add a person by Google email</b><div class="hint">They get this team automatically the first time they sign in with that email.</div><div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="invEmail" type="email" placeholder="name@company.com" style="flex:1 1 220px"><select class="sel" id="invTeam">${ROLE_OPTS.filter(([v]) => v).map(([v,l]) => `<option value="${v}" ${v==="planning"?"selected":""}>${esc(l)}</option>`).join("")}</select><button class="btn primary" id="invAdd" type="button">Add</button></div><div id="invList"></div></div>` : ""}
+      <div style="display:flex;gap:8px"><input class="inp" id="roleQ" type="search" placeholder="Find someone who already opened the page (name or email)"></div><div id="roleHits"></div>
       <div id="roleList"></div></div>
     <div class="mf"><button class="btn primary" data-mclose type="button">Done</button></div></div></div>`);
   drawRoles();
+  const ia = $("#invAdd"); if (ia) ia.onclick = async () => { const em = ($("#invEmail").value || "").trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast("Write a valid email."); $("#invEmail").focus(); return; }
+    const team = $("#invTeam").value; const known = Object.entries(S.userEmails || {}).find(([, e]) => e === em);
+    if (await write(async () => { await S.db.doc("invites/" + em).set({team, at:Date.now(), by:S.me.id}); if (known) await S.db.doc("roles/" + known[0]).set({team, at:Date.now(), by:S.me.id}); }, known ? "Team saved" : "Added — they get this team when they sign in")) { $("#invEmail").value = ""; drawRoles(); } };
+  $("#rolesModal").addEventListener("change", async e => { const el = e.target; if (!el.dataset.inv) return; const em = el.dataset.inv;
+    if (!el.value) await write(() => S.db.doc("invites/" + em).delete(), "Invite removed"); else await write(() => S.db.doc("invites/" + em).set({team:el.value, at:Date.now(), by:S.me.id}), "Team saved"); drawRoles(); });
   let t; $("#roleQ").addEventListener("input", e => { clearTimeout(t); const q = e.target.value.trim(); t = setTimeout(async () => {
     if (!S.user || !S.user.search) return; let hits = [];
     try { hits = await S.user.search(q); } catch(_) {}
@@ -1484,8 +1490,11 @@ async function drawRoles(){
   let ps = {}; try { ps = ids.length && S.user ? await S.user.profiles(ids) : {}; } catch(_) {}
   if (!$("#roleList")) return;
   const meRow = `<div class="rrow"><span><b>${esc(S.me.name || "You")}</b> <span class="chip ok">you</span></span><span class="chip info st">${S.isOwner ? "Owner · Admin (everything)" : "Admin"}</span></div>`;
-  el.innerHTML = meRow + (ids.length ? ids.map(id => { const n = (ps[id] && ps[id].name) || (S.rolePeople[id] && S.rolePeople[id].name) || "Someone"; const cur = (S.roles[id] || {}).team || "";
-    return `<div class="rrow"><span>${esc(n)}${ps[id] && ps[id].guest ? ` <span class="chip plain">guest</span>` : ""}</span><select class="sel" data-role="${esc(id)}">${ROLE_OPTS.map(([v,l]) => `<option value="${v}" ${v===cur?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`; }).join("")
+  S.userEmails = Object.fromEntries(ids.map(id => [id, ((ps[id] && ps[id].email) || "").toLowerCase()]).filter(x => x[1]));
+  const il = $("#invList"); if (il) { const known = new Set(Object.values(S.userEmails)); const pend = Object.entries(S.invites || {}).filter(([em]) => !known.has(em));
+    il.innerHTML = pend.length ? `<div class="hint" style="margin-top:6px">Waiting to sign in for the first time:</div>` + pend.map(([em, v]) => `<div class="rrow"><span>${esc(em)} <span class="chip plain">not signed in yet</span></span><select class="sel" data-inv="${esc(em)}"><option value="">Remove</option>${ROLE_OPTS.filter(([v]) => v).map(([v,l]) => `<option value="${v}" ${v===(pend.find(x=>x[0]===em)[1].team)?" selected":""}>${esc(l)}</option>`).join("")}</select></div>`).join("") : ""; }
+  el.innerHTML = meRow + (ids.length ? ids.map(id => { const n = (ps[id] && ps[id].name) || (S.rolePeople[id] && S.rolePeople[id].name) || "Someone"; const cur = (S.roles[id] || {}).team || ""; const em = ps[id] && ps[id].email;
+    return `<div class="rrow"><span>${esc(n)}${em ? ` <span class="hint">${esc(em)}</span>` : ""}${ps[id] && ps[id].guest ? ` <span class="chip plain">guest</span>` : ""}</span><select class="sel" data-role="${esc(id)}">${ROLE_OPTS.map(([v,l]) => `<option value="${v}" ${v===cur?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`; }).join("")
     : `<div class="hint" style="margin-top:8px">Nobody else has opened the page yet. Share it, they open it once, then pick their team here.</div>`);
 }
 
@@ -2033,6 +2042,7 @@ const setStatusNote = (html, bad) => { const s = $("#status"); if (!html) { s.hi
       $("#btnRoles").hidden = false;
       db.collection("members").onSnapshot(snap => { S.members = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if ($("#rolesModal")) drawRoles(); }, () => {});
       db.collection("roles").onSnapshot(snap => { S.roles = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if ($("#rolesModal")) drawRoles(); }, () => {});
+      if (window.__rhStandalone) db.collection("invites").onSnapshot(snap => { S.invites = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if ($("#rolesModal")) drawRoles(); }, () => {});
     } else {
       const sel = $("#teamSel"); sel.disabled = true; sel.title = "Your team is set by the page owner";
       db.doc("roles/" + S.me.id).onSnapshot(d => {

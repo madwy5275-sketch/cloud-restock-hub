@@ -30,7 +30,13 @@ service cloud.firestore {
 
     match /users/{uid} { allow read: if member() || (signedIn() && request.auth.uid == uid); allow write: if signedIn() && request.auth.uid == uid; }
     match /members/{uid} { allow read: if isAdmin() || (signedIn() && request.auth.uid == uid); allow write: if signedIn() && request.auth.uid == uid; }
-    match /roles/{uid} { allow read: if isAdmin() || (signedIn() && request.auth.uid == uid); allow write: if isAdmin(); }
+    function myEmail() { return request.auth.token.email != null ? request.auth.token.email.lower() : '-'; }
+    function inviteDoc() { return /databases/$(database)/documents/invites/$(myEmail()); }
+    match /roles/{uid} { allow read: if isAdmin() || (signedIn() && request.auth.uid == uid); allow write: if isAdmin();
+      // a person an admin invited by email takes that team the first time they sign in
+      allow create: if signedIn() && request.auth.uid == uid && exists(inviteDoc())
+        && request.resource.data.team == get(inviteDoc()).data.team && request.resource.data.keys().hasOnly(['team', 'at', 'by', 'email', 'via']); }
+    match /invites/{email} { allow read: if isAdmin() || (signedIn() && email == myEmail()); allow write: if isAdmin(); }
 
     match /orders/{id} {
       allow read: if member();

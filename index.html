@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=7"></script>
-<script src="rh-boot.js?v=7"></script>
-<script type="module" src="firebase-shim.js?v=7"></script>
+<script src="config.js?v=8"></script>
+<script src="rh-boot.js?v=8"></script>
+<script type="module" src="firebase-shim.js?v=8"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -100,6 +100,10 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 @media (max-width:760px){.gflow{grid-template-columns:1fr}.gfaq{grid-template-columns:1fr}}
 .rrow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}.rrow .sel{width:230px}
 [hidden]{display:none!important}
+.cellinfo{display:flex;gap:4px;justify-content:center;align-items:center;margin-top:3px;font-size:10.5px;color:var(--ink-2);white-space:nowrap}
+.sb{display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;font-size:10.5px;font-weight:700;white-space:nowrap}
+.sb.short{background:var(--bad-soft);color:var(--bad)}.sb.over{background:var(--warn-soft);color:var(--warn)}.sb.ok{background:var(--ok-soft);color:var(--ok)}
+.rs{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px}.rs.compact{font-size:11.5px}
 .factive{display:flex;gap:6px;flex-wrap:wrap;width:100%;align-items:center}
 .factive .chip{height:24px;cursor:pointer}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
@@ -265,7 +269,7 @@ textarea.inp{height:auto;min-height:64px;padding:8px 10px;resize:vertical;width:
     <input id="q" class="inp" type="search" placeholder="Search style, SKU, colour, ref…">
     <select id="fFactory" class="sel" aria-label="Factory"><option value="">All factories</option></select>
     <select id="fPrio" class="sel" aria-label="Priority"><option value="">All priorities</option><option value="P1">High</option><option value="P2">Medium</option><option value="P3">Low</option></select>
-    <label class="hint" style="display:flex;gap:6px;align-items:center"><input id="fClosed" type="checkbox"> Show on hold / cancelled</label>
+    <label class="hint" style="display:flex;gap:6px;align-items:center"><input id="fClosed" type="checkbox"> Show cancelled / on hold</label>
     <button id="btnFilters" class="btn" type="button" aria-pressed="false">Filters</button>
   </div>
   <div id="fActive" class="factive" hidden></div>
@@ -544,13 +548,14 @@ function cardHTML(o){
   </button>`;
 }
 function renderBoard(list){
-  return `<div class="board">` + BOARD_COLS.map(ids => {
+  const cols = S.fClosed ? BOARD_COLS.concat([["cancelled","hold"]]) : BOARD_COLS;
+  return `<div class="board">` + cols.map(ids => {
     const items = list.filter(o => ids.includes(o.status)); const s0 = ST[ids[0]];
     let bulk = "";
     if (ids[0] === "approved") { const n = items.filter(o => can("start", o)).length; if (n > 1) bulk = `<button class="btn sm" data-go="startAll" type="button">Mark all ${n} started</button>`; }
     if (["approved","inprod","partial"].includes(ids[0]) && items.length && (S.team === "production" || S.team === "admin") && !S.readOnly) bulk += ` <button class="btn sm" data-go="recv" type="button">Import receiving</button>`;
     if (ids[0] === "draft") { const n = items.filter(o => o.status === "draft" && qtyOf(o) > 0).length; if (n > 1 && can("submit", {status:"draft"})) bulk = `<button class="btn sm" data-bulk="submit" type="button">Send all ${n} to Production</button>`; }
-    return `<section class="col"><div class="col-h"><span class="dot" style="background:${s0.dot}"></span><h3>${esc(ids[0]==="draft"?"Draft & changes":s0.name)}</h3><span class="cnt">${items.length}</span><span class="owner">${esc(s0.owner)}</span></div>
+    return `<section class="col"><div class="col-h"><span class="dot" style="background:${s0.dot}"></span><h3>${esc(ids[0]==="draft"?"Draft & changes":ids[0]==="cancelled"?"Cancelled & on hold":s0.name)}</h3><span class="cnt">${items.length}</span><span class="owner">${esc(s0.owner)}</span></div>
       ${bulk?`<div style="padding:8px 10px 0">${bulk}</div>`:""}
       <div class="col-b">${items.length ? styleGroups(items).map(([k, its]) => styleCardHTML(k, its)).join("") : `<div class="empty-col">${emptyText(ids[0])}</div>`}</div></section>`;
   }).join("") + `</div>`;
@@ -830,13 +835,13 @@ async function onAct(act){
   else if (act === "changeQty") openChangeForm(o);
   else if (act === "askCancel") {
     if (!note) { toast("Write why it should be cancelled in the comment box first."); $("#cText") && $("#cText").focus(); return; }
-    if (S.team === "admin") { if (await write(() => setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, "Cancelled by admin — " + note), "Cancelled")) clearNote(); return; }
+    if (S.team === "admin") { if (await write(() => cancelOrder(o, "Cancelled by admin — " + note), "Cancelled")) clearNote(); return; }
     if (await write(async () => { await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Cancellation requested — " + note); }, "Sent to Production for confirmation")) clearNote();
   }
   else if (act === "withdraw") { if (await write(async () => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote("Change request withdrawn")); }, "Change withdrawn")) clearNote(); }
   else if (act === "confirmChange") {
     const pc = o.pendingChange; if (!pc) return;
-    if (pc.kind === "cancel") { if (await write(() => setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, withNote("Production confirmed the cancellation")), "Cancellation confirmed")) clearNote(); }
+    if (pc.kind === "cancel") { if (await write(() => cancelOrder(o, withNote("Production confirmed the cancellation")), "Cancellation confirmed")) clearNote(); }
     else {
       const extra = {pendingChange:null, sizes:pc.sizes, qty:sumObj(pc.sizes)};
       if (o.production && o.production.sizes) extra.production = {sizes:pc.sizes};
@@ -1424,9 +1429,10 @@ async function drawRoles(){
   const ids = [...new Set([...Object.keys(S.members), ...Object.keys(S.roles), ...Object.keys(S.rolePeople)])].filter(id => id && id !== S.me.id);
   let ps = {}; try { ps = ids.length && S.user ? await S.user.profiles(ids) : {}; } catch(_) {}
   if (!$("#roleList")) return;
-  el.innerHTML = ids.length ? ids.map(id => { const n = (ps[id] && ps[id].name) || (S.rolePeople[id] && S.rolePeople[id].name) || "Someone"; const cur = (S.roles[id] || {}).team || "";
+  const meRow = `<div class="rrow"><span><b>${esc(S.me.name || "You")}</b> <span class="chip ok">you</span></span><span class="chip info st">${S.isOwner ? "Owner · Admin (everything)" : "Admin"}</span></div>`;
+  el.innerHTML = meRow + (ids.length ? ids.map(id => { const n = (ps[id] && ps[id].name) || (S.rolePeople[id] && S.rolePeople[id].name) || "Someone"; const cur = (S.roles[id] || {}).team || "";
     return `<div class="rrow"><span>${esc(n)}${ps[id] && ps[id].guest ? ` <span class="chip plain">guest</span>` : ""}</span><select class="sel" data-role="${esc(id)}">${ROLE_OPTS.map(([v,l]) => `<option value="${v}" ${v===cur?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`; }).join("")
-    : `<div class="hint">Nobody else has opened the page yet.</div>`;
+    : `<div class="hint" style="margin-top:8px">Nobody else has opened the page yet. Share it, they open it once, then pick their team here.</div>`);
 }
 
 /* ---------- advanced filters ---------- */
@@ -1520,6 +1526,37 @@ function styleGroups(list){
   return [...m.entries()];
 }
 const valueOf = o => (Number(o.unitCost)||0) * (approvedOf(o) || qtyOf(o));
+/* ---------- shortage / over per size ---------- */
+function recvStats(o){
+  const ap = (o.production||{}).sizes, base = ap && sumObj(ap) ? ap : (o.sizes||{}), rc = (o.receiving||{}).sizes || {};
+  const keys = [...new Set([...Object.keys(base), ...Object.keys(rc)])];
+  let ord = 0, rec = 0, short = 0, over = 0;
+  for (const k of keys) { const v = Number(base[k])||0, r = Number(rc[k])||0; ord += v; rec += r; if (r > v) over += r - v; else short += v - r; }
+  return {ord, rec, short, over, closed: !!o.closedShort || o.status === "cancelled"};
+}
+function sizeBadge(v, r, started){
+  if (!r && !started) return "";
+  if (r > v) return `<span class="sb over" title="${fmt(r - v)} more than ordered">+${fmt(r - v)}</span>`;
+  if (r === v && v) return `<span class="sb ok" title="complete">✓</span>`;
+  if (r || started) return `<span class="sb short" title="${fmt(v - r)} still missing">−${fmt(v - r)}</span>`;
+  return "";
+}
+function recvSummaryHTML(list, compact){
+  const t = list.reduce((a, o) => { const x = recvStats(o); a.ord += x.ord; a.rec += x.rec; a.short += x.short; a.over += x.over; return a; }, {ord:0, rec:0, short:0, over:0});
+  if (!t.rec) return "";
+  const closed = list.every(o => o.closedShort || o.status === "cancelled");
+  return `<span class="rs${compact ? " compact" : ""}"><span>Received <b>${fmt(t.rec)}</b> / ${fmt(t.ord)}</span>${t.short ? `<span class="sb short">${closed ? "cancelled" : "short"} −${fmt(t.short)}</span>` : ""}${t.over ? `<span class="sb over">over +${fmt(t.over)}</span>` : ""}${!t.short && !t.over ? `<span class="sb ok">complete ✓</span>` : ""}</span>`;
+}
+/* cancel: if something already arrived, close it as received (the rest is cancelled) instead of wiping it */
+async function cancelOrder(o, text){
+  const rec = receivedOf(o);
+  if (rec > 0) {
+    const st = recvStats(o);
+    return setStatus(o, "received", {pendingChange:null, prevStatus:o.status, closedShort:{qty:st.short, at:Date.now(), by:S.me.id}},
+      `${text} — closed with ${fmt(rec)} received; ${fmt(st.short)} not coming (cancelled)`);
+  }
+  return setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, text);
+}
 function styleCardHTML(key, items){
   const o0 = items[0]; const pr = items.map(o => o.priority||"P3").sort()[0];
   const edge = pr === "P1" ? "var(--bad)" : pr === "P2" ? "var(--warn)" : "var(--line-2)";
@@ -1535,21 +1572,23 @@ function styleCardHTML(key, items){
       <span class="t">${esc(o0.style||"Untitled style")}</span>
       <span class="meta">${items.slice(0,6).map(o => `<img class="thumb" style="width:20px;height:26px;border-radius:4px" src="${esc(imgFor(o))}" alt="${esc(o.color)}" title="${esc(o.color)}">`).join("")}${items.length>6?`<span class="hint">+${items.length-6}</span>`:""}</span>
       <span class="meta"><span class="qty">${fmt(qty)} pcs</span><span class="chip ${pr.toLowerCase()}">${esc(prioName(pr))}</span>${worst?`<span class="chip ${worst.cls}">${esc(worst.txt)}</span>`:""}${moq?`<span class="chip warn">MOQ</span>`:""}</span>
+      ${recvSummaryHTML(items, true) ? `<span class="meta">${recvSummaryHTML(items, true)}</span>` : ""}
+      ${items.some(o => o.closedShort) ? `<span class="meta"><span class="chip bad st">Closed short · rest cancelled</span></span>` : ""}${items.every(o => o.status === "cancelled") ? `<span class="meta"><span class="chip bad st">Cancelled</span></span>` : ""}
       <span class="meta sub"><span>${esc(factoryOf(o0))}</span>${val?`<span>· ${fmt(Math.round(val))} EGP</span>`:""}</span>
     </span></button>`;
 }
 function styleItems(key){ return S.orders.filter(o => styleKey(o) === key).sort((a,b) => (a.color||"").localeCompare(b.color||"")); }
 function matrixHTML(items, mode){
   const keys = sortSizes([...new Set(items.flatMap(o => [...Object.keys(o.sizes||{}), ...Object.keys((o.production||{}).sizes||{})]))]);
-  const head = `<tr><th>Colour</th><th>Status</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total</th></tr>`;
+  const head = `<tr><th>Colour</th><th>Status</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total${items.some(o => receivedOf(o)) ? " (in/ordered)" : ""}</th></tr>`;
   const rows = items.map(o => {
     const st = ST[o.status] || ST.draft; const req = o.sizes||{}, ap = (o.production||{}).sizes, rc = (o.receiving||{}).sizes||{};
     const base = ap && sumObj(ap) ? ap : req;
     let cells, tot;
-    if (mode === "receive" && ["approved","inprod","partial"].includes(o.status)) { cells = keys.map(k => { const left = Math.max(0, (Number(base[k])||0) - (Number(rc[k])||0)); const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td><input type="number" min="0" id="src-${esc(o.id)}-${esc(k)}" data-src="${esc(o.id)}" data-size="${esc(k)}" value="" placeholder="0" title="${fmt(left)} still to come"><div class="hint" style="font-size:10.5px;white-space:nowrap;margin-top:2px">${fmt(v)} ord${r ? ` · <b style="color:var(--ok)">${fmt(r)} in</b>` : ""}${left && r ? ` · ${fmt(left)} left` : ""}</div></td>`; }); tot = Math.max(0, sumObj(base) - sumObj(rc)); }
+    if (mode === "receive" && ["approved","inprod","partial"].includes(o.status)) { cells = keys.map(k => { const left = Math.max(0, (Number(base[k])||0) - (Number(rc[k])||0)); const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td><input type="number" min="0" id="src-${esc(o.id)}-${esc(k)}" data-src="${esc(o.id)}" data-size="${esc(k)}" value="" placeholder="0" title="${fmt(left)} still to come"><div class="cellinfo"><span>${fmt(r)}/${fmt(v)}</span>${sizeBadge(v, r, r > 0)}</div></td>`; }); tot = null; }
     else if (mode === "change" && can("change", o)) { cells = keys.map(k => `<td><input type="number" min="0" id="sch-${esc(o.id)}-${esc(k)}" data-sch="${esc(o.id)}" data-size="${esc(k)}" value="${Number(base[k])||0}"><div class="hint" style="font-size:10.5px;margin-top:2px">now ${fmt(Number(base[k])||0)}</div></td>`); tot = sumObj(base); }
-    else { cells = keys.map(k => { const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td class="num">${v ? fmt(v) : "—"}${r ? `<br><span class="hint">${fmt(r)} in</span>` : ""}</td>`; }); tot = sumObj(base); }
-    return `<tr><th><button type="button" data-open="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;border:0;background:transparent;padding:0;font-weight:600;text-align:left"><img class="thumb" style="width:24px;height:31px;border-radius:4px" src="${esc(imgFor(o))}" alt="">${esc(o.color)}</button></th><td><span class="chip ${st.tone} st">${esc(st.name)}</span>${o.pendingChange?` <span class="chip bad">change</span>`:""}</td>${cells.join("")}<td class="num"><b>${fmt(tot)}</b></td></tr>`;
+    else { const anyIn = sumObj(rc) > 0; cells = keys.map(k => { const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td class="num">${v ? fmt(v) : "—"}${anyIn ? `<div class="cellinfo"><span>${fmt(r)} in</span>${sizeBadge(v, r, true)}</div>` : ""}</td>`; }); tot = sumObj(base); }
+    return `<tr><th><button type="button" data-open="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;border:0;background:transparent;padding:0;font-weight:600;text-align:left"><img class="thumb" style="width:24px;height:31px;border-radius:4px" src="${esc(imgFor(o))}" alt="">${esc(o.color)}</button></th><td><span class="chip ${st.tone} st">${esc(st.name)}</span>${o.pendingChange?` <span class="chip bad">change</span>`:""}</td>${cells.join("")}<td class="num">${(() => { const x = recvStats(o); if (!x.rec) return `<b>${fmt(x.ord)}</b>`; return `<b>${fmt(x.rec)}</b><span class="hint">/${fmt(x.ord)}</span><div class="cellinfo">${x.short ? `<span class="sb short">${x.closed ? "cxl" : ""} −${fmt(x.short)}</span>` : ""}${x.over ? `<span class="sb over">+${fmt(x.over)}</span>` : ""}${!x.short && !x.over ? `<span class="sb ok">✓</span>` : ""}</div>`; })()}</td></tr>`;
   }).join("");
   return `<div class="sizes tbl-wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -1586,7 +1625,7 @@ function renderStyleDrawer(){
   const feed = items.flatMap(o => feedFor(o.id).map(f => Object.assign({color:o.color}, f))).sort((a,b) => (a.at||0)-(b.at||0)).slice(-40);
   L.innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-label="${esc(o0.style)}" style="width:min(860px,100%)">
     <div class="d-h"><div class="x"><div style="min-width:0"><div class="eyebrow">${esc(cycleLabel(o0.cycle))} · ${items.length} colour${items.length>1?"s":""}</div><h2>${esc(o0.style)}</h2></div><button class="btn ghost" data-close type="button" aria-label="Close">✕</button></div>
-      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip plain">${fmt(tot)} pcs</span>${val?`<span class="chip plain">${fmt(Math.round(val))} EGP at cost</span>`:""}<span class="chip plain">${esc(o0.code||"")}</span><span class="chip plain">${esc(o0.fabric||"")}</span><span class="chip plain">${esc(factoryOf(o0))}</span>${STAGES.filter(s => by([s.id]).length).map(s => `<span class="chip ${s.tone} st">${by([s.id]).length} ${esc(s.name)}</span>`).join("")}</div></div>
+      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip plain">${fmt(tot)} pcs</span>${val?`<span class="chip plain">${fmt(Math.round(val))} EGP at cost</span>`:""}<span class="chip plain">${esc(o0.code||"")}</span><span class="chip plain">${esc(o0.fabric||"")}</span><span class="chip plain">${esc(factoryOf(o0))}</span>${STAGES.filter(s => by([s.id]).length).map(s => `<span class="chip ${s.tone} st">${by([s.id]).length} ${esc(s.name)}</span>`).join("")}</div>${recvSummaryHTML(items) ? `<div style="margin-top:6px">${recvSummaryHTML(items)}</div>` : ""}${items.some(o => o.closedShort) ? `<div class="hint" style="margin-top:4px">Closed short = cancelled after part of it arrived: the received pieces stay counted, only the missing ones are cancelled.</div>` : ""}</div>
     <div class="d-b">
       <div class="sec"><h4>Colours &amp; sizes${mode==="approve"?" — approve":mode==="receive"?" — receive now":mode==="change"?" — new quantities":""}</h4>${matrixHTML(items, mode)}<div class="hint" style="margin-top:6px">Click a colour to open it on its own (photos, single-colour edits, its history).</div></div>
       ${acts}
@@ -1637,7 +1676,7 @@ async function onStyleAct(act){
     const why = (($("#sWhy") && $("#sWhy").value.trim()) || note).slice(0, 1000);
     if (!why) { toast("Write the reason first."); $("#sWhy") && $("#sWhy").focus(); return; }
     const list = items.filter(o => can("change", o));
-    if (S.team === "admin") { confirmBox(`Cancel ${list.length} colour${list.length===1?"":"s"} now?`, "They move to cancelled at once and stay in the history.", "Cancel them", () => run(list, o => setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, "Cancelled by admin — " + why), "Cancelled")); return; }
+    if (S.team === "admin") { confirmBox(`Cancel ${list.length} colour${list.length===1?"":"s"} now?`, "Nothing received yet → cancelled. Partly received → closed: received pieces stay, the rest is cancelled.", "Cancel them", () => run(list, o => cancelOrder(o, "Cancelled by admin — " + why), "Cancelled")); return; }
     const note2 = why;
     confirmBox(`Ask Production to cancel ${list.length} colours?`, "They apply after Production confirms.", "Send", () => run(list, async o => {
       await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note:note2, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
@@ -1656,7 +1695,7 @@ async function applyReceipt(o, now, date, suffix){
 }
 async function confirmChange(o, text, pcIn){
   const pc = pcIn || o.pendingChange; if (!pc) return;
-  if (pc.kind === "cancel") return setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, text + " the cancellation");
+  if (pc.kind === "cancel") return cancelOrder(o, text + " the cancellation");
   const extra = {pendingChange:null, sizes:pc.sizes, qty:sumObj(pc.sizes)};
   if (o.production && o.production.sizes) extra.production = {sizes:pc.sizes};
   let status = o.status;
@@ -1891,7 +1930,8 @@ const setStatusNote = (html, bad) => { const s = $("#status"); if (!html) { s.hi
       const sel = $("#teamSel"); sel.disabled = true; sel.title = "Your team is set by the page owner";
       db.doc("roles/" + S.me.id).onSnapshot(d => {
         const t = d.exists ? (d.data().team || "") : "";
-        S.team = ["planning","production","fashion"].includes(t) ? t : "";
+        S.team = ["planning","production","fashion","admin"].includes(t) ? t : "";
+        if (t === "admin" && !sel.querySelector('option[value="admin"]')) sel.insertAdjacentHTML("beforeend", `<option value="admin">All teams (admin)</option>`);
         let none = sel.querySelector('option[value="__none"]'); if (!none) { sel.insertAdjacentHTML("afterbegin", `<option value="__none"></option>`); none = sel.querySelector('option[value="__none"]'); }
         none.textContent = t === "viewer" ? "View only" : "No team yet (view only)";
         sel.value = S.team || "__none";

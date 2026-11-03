@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=12"></script>
-<script src="rh-boot.js?v=12"></script>
-<script type="module" src="firebase-shim.js?v=12"></script>
+<script src="config.js?v=13"></script>
+<script src="rh-boot.js?v=13"></script>
+<script type="module" src="firebase-shim.js?v=13"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -552,7 +552,6 @@ function renderBoard(list){
   const cols = BOARD_COLS.concat([["__closed"]]).concat(S.fClosed ? [["cancelled","hold"]] : []);
   return `<div class="board">` + cols.map(ids => {
     const items = ids[0] === "__closed" ? list.filter(o => o.closedShort) : list.filter(o => ids.includes(o.status) && !(ids[0] === "received" && o.closedShort));
-    if (ids[0] === "__closed" && !items.length) return "";
     const s0 = ids[0] === "__closed" ? {name:"Closed short", owner:"Done", dot:"var(--warn)"} : ST[ids[0]];
     let bulk = "";
     if (ids[0] === "approved") { const n = items.filter(o => can("start", o)).length; if (n > 1) bulk = `<button class="btn sm" data-go="startAll" type="button">Mark all ${n} started</button>`; }
@@ -564,7 +563,7 @@ function renderBoard(list){
   }).join("") + `</div>`;
 }
 function emptyText(id){
-  return ({draft:"Planning adds styles here. Use “New request” or import the Factory Order Sheet from Power BI.", production:"Requests sent by Planning wait here for Production to confirm factory, quantity and receiving date.", approved:"Scheduled with a factory and a receiving date.", inprod:"Cut and sewing started.", partial:"Some sizes arrived.", received:"Fully received."})[id] || "Nothing here.";
+  return ({draft:"Planning adds styles here. Use “New request” or import the Factory Order Sheet from Power BI.", production:"Requests sent by Planning wait here for Production to confirm factory, quantity and receiving date.", approved:"Scheduled with a factory and a receiving date.", inprod:"Cut and sewing started.", partial:"Some sizes arrived.", received:"Fully received.", __closed:"Colours cancelled after part of them arrived show here."})[id] || "Nothing here.";
 }
 function renderTable(list){
   if (!list.length) return emptyBlock();

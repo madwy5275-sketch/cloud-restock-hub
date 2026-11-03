@@ -59,7 +59,8 @@ function colRef(path){
     onSnapshot: (cb, err) => onSnapshot(c, { includeMetadataChanges: true }, s => cb({ docs: s.docs.map(wrapDoc), size: s.size, empty: s.empty, metadata: { fromCache: s.metadata.fromCache, hasPendingWrites: s.metadata.hasPendingWrites } }), e => err && err(e))
   };
 }
-const db = { doc: docRef, collection: colRef, batch: () => writeBatch(fs) };
+async function deleteMany(paths){ for (let i = 0; i < paths.length; i += 400) { const b = writeBatch(fs); paths.slice(i, i + 400).forEach(p => b.delete(doc(fs, p))); await b.commit(); } }
+const db = { doc: docRef, collection: colRef, batch: () => writeBatch(fs), deleteMany };
 
 /* ---------- users / profiles ---------- */
 let USERS = {}; let usersReady = null;
@@ -68,8 +69,8 @@ function watchUsers(){
   usersReady = new Promise(res => onSnapshot(collection(fs, "users"), s => { USERS = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); res(); }, () => res()));
   return usersReady;
 }
-function makeUser(u){
-  const isOwner = ADMINS.includes(String(u.email || "").toLowerCase());
+function makeUser(u, roleAdmin){
+  const isOwner = roleAdmin || ADMINS.includes(String(u.email || "").toLowerCase());
   const prof = id => { const x = USERS[id] || {}; return { id, name: x.name || "", avatarUrl: x.photo || "", guest: false }; };
   return {
     me: async () => ({ id: u.uid, name: u.displayName || u.email || "", avatarUrl: u.photoURL || "", isOwner }),
@@ -131,5 +132,6 @@ onAuthStateChanged(auth, async u => {
   try { await setDoc(doc(fs, "users", u.uid), { name: u.displayName || "", email: u.email || "", photo: u.photoURL || "", at: Date.now() }, { merge: true }); } catch (_) {}
   const who = document.querySelector(".who");
   if (who && !document.getElementById("rhOut")) { const b = document.createElement("button"); b.id = "rhOut"; b.className = "btn sm ghost"; b.type = "button"; b.textContent = "Sign out"; b.title = u.email || ""; b.onclick = () => signOut(auth).then(() => location.reload()); who.after(b); }
-  resolveReady({ db, user: makeUser(u), downloads, assets });
+  let roleAdmin = false; try { const r = await getDoc(doc(fs, "roles", u.uid)); roleAdmin = r.exists() && r.data().team === "admin"; } catch (_) {}
+  resolveReady({ db, user: makeUser(u, roleAdmin), downloads, assets });
 });

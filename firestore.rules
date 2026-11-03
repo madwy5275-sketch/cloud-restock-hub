@@ -4,8 +4,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isAdmin() { return signedIn() && request.auth.token.email != null
+    function emailAdmin() { return signedIn() && request.auth.token.email != null
       && request.auth.token.email.lower() in ['madwy5275@gmail.com', 'amr96578@gmail.com', 'mohamed.adawy@garments-group.com']; }
+    function isAdmin() { return emailAdmin() || (signedIn() && team() == 'admin'); }
     function roleDoc() { return get(/databases/$(database)/documents/roles/$(request.auth.uid)); }
     function team() { return exists(/databases/$(database)/documents/roles/$(request.auth.uid)) ? roleDoc().data.get('team', '') : ''; }
     function isTeam(t) { return isAdmin() || (signedIn() && team() == t); }

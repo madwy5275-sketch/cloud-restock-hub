@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=4"></script>
-<script src="rh-boot.js?v=4"></script>
-<script type="module" src="firebase-shim.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="rh-boot.js?v=5"></script>
+<script type="module" src="firebase-shim.js?v=5"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -312,26 +312,44 @@ const PLACEHOLDER = "placeholder.png";
 const norm = x => String(x||"").toUpperCase().replace(/[^A-Z0-9]+/g, "");
 let THUMB_C = {}, THUMB_S = {};
 /* website photos: JPEG sprite sheets, sliced once into small blob URLs */
+let THUMB_IDX = null; const THUMB_SHEETS = {}; const THUMB_Q = new Set(); let _thumbBusy = false;
 async function loadThumbs(T){
   if (!T || !T.sheets) return;
   S.thumbs = {updatedAt:T.updatedAt, source:T.source};
-  const inv = T.sheets.map(() => []);
-  for (const [k, [sh, i]] of Object.entries(T.byColor || {})) { const [st, co] = k.split("||"); inv[sh].push(["c", norm(st) + "|" + norm(co), i]); }
-  for (const [k, [sh, i]] of Object.entries(T.byStyle || {})) inv[sh].push(["s", norm(k), i]);
-  const cv = document.createElement("canvas"); cv.width = T.w; cv.height = T.h; const cx = cv.getContext("2d");
-  for (let n = 0; n < T.sheets.length; n++) {
-    const im = new Image(); im.src = T.sheets[n];
-    try { await im.decode(); } catch(_) { continue; }
-    for (const [t, key, i] of inv[n]) {
-      cx.clearRect(0, 0, T.w, T.h); cx.drawImage(im, (i % T.cols) * T.w, Math.floor(i / T.cols) * T.h, T.w, T.h, 0, 0, T.w, T.h);
-      const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", 0.82)); if (!blob) continue;
-      (t === "c" ? THUMB_C : THUMB_S)[key] = URL.createObjectURL(blob);
-    }
-    render();
-  }
+  const idx = {c:{}, s:{}};
+  for (const [k, v] of Object.entries(T.byColor || {})) { const [st, co] = k.split("||"); idx.c[norm(st) + "|" + norm(co)] = v; }
+  for (const [k, v] of Object.entries(T.byStyle || {})) idx.s[norm(k)] = v;
+  THUMB_IDX = Object.assign({w:T.w, h:T.h, cols:T.cols, sheets:T.sheets}, idx);
+  render();
 }
-const siteImg = o => THUMB_C[norm(o.style) + "|" + norm(o.color)] || "";
-const siteStyleImg = o => THUMB_S[norm(o.style)] || "";
+function thumbAt(kind, key){
+  const map = kind === "c" ? THUMB_C : THUMB_S; if (map[key]) return map[key];
+  if (!THUMB_IDX || !(THUMB_IDX[kind] || {})[key]) return "";
+  THUMB_Q.add(kind + "|" + key); if (!_thumbBusy) setTimeout(cutThumbs, 0);
+  return PLACEHOLDER;
+}
+async function sheetImg(n){
+  if (!THUMB_SHEETS[n]) THUMB_SHEETS[n] = (async () => { const im = new Image(); im.src = THUMB_IDX.sheets[n]; await im.decode(); return im; })();
+  return THUMB_SHEETS[n];
+}
+async function cutThumbs(){
+  if (_thumbBusy) return; _thumbBusy = true;
+  const T = THUMB_IDX, cv = document.createElement("canvas"); cv.width = T.w; cv.height = T.h; const cx = cv.getContext("2d");
+  try {
+    while (THUMB_Q.size) {
+      const job = [...THUMB_Q].slice(0, 40); job.forEach(j => THUMB_Q.delete(j));
+      for (const j of job) {
+        const kind = j.slice(0, 1), key = j.slice(2), map = kind === "c" ? THUMB_C : THUMB_S; if (map[key]) continue;
+        const [sh, i] = T[kind][key]; let im; try { im = await sheetImg(sh); } catch(_) { continue; }
+        cx.clearRect(0, 0, T.w, T.h); cx.drawImage(im, (i % T.cols) * T.w, Math.floor(i / T.cols) * T.h, T.w, T.h, 0, 0, T.w, T.h);
+        const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", 0.82)); if (blob) map[key] = URL.createObjectURL(blob);
+      }
+      render();
+    }
+  } finally { _thumbBusy = false; }
+}
+const siteImg = o => thumbAt("c", norm(o.style) + "|" + norm(o.color));
+const siteStyleImg = o => thumbAt("s", norm(o.style));
 const blobSrc = id => window.__blobSrc ? window.__blobSrc(id) : "/_blob/" + id;
 function imgFor(o){
   if (o.images && o.images.length) return blobSrc(o.images[0]);
@@ -1111,7 +1129,7 @@ function openImport(){
     if (/\.xlsx?$/i.test(f.name)) {
       if (!window.XLSX) { toast("Excel reader is still loading; try again in a second."); return; }
       const wb = XLSX.read(await f.arrayBuffer(), {type:"array"});
-      const ws = wb.Sheets[wb.SheetNames[0]];
+      const ws = trimSheet(wb.Sheets[wb.SheetNames[0]]);
       $("#impText").value = XLSX.utils.sheet_to_csv(ws, {FS:"\t", blankrows:false}); preview();
     } else { const rd = new FileReader(); rd.onload = () => { $("#impText").value = String(rd.result); preview(); }; rd.readAsText(f); }
   };
@@ -1323,8 +1341,8 @@ function bindBatchManage(id){
     const started = os.filter(o => o.production || o.receiving || !["draft","changes","fashion","cancelled","hold"].includes(o.status)).length;
     confirmBox(`Delete ${S.batches[id].name}?`, `The batch, its ${os.length} request${os.length===1?"":"s"} and their comments disappear for everyone${started ? ` — ${started} of them are already with Production` : ""}. This cannot be undone.`, "Delete for good", async () => {
       const ok = await write(async () => {
-        await pmap(os.flatMap(o => feedFor(o.id).map(f => "feed/" + f.id)), path => S.db.doc(path).delete(), 10);
-        await pmap(os, o => S.db.doc("orders/" + o.id).delete(), 10);
+        const paths = os.flatMap(o => feedFor(o.id).map(f => "feed/" + f.id)).concat(os.map(o => "orders/" + o.id));
+        if (S.db.deleteMany) await S.db.deleteMany(paths); else await pmap(paths, path => S.db.doc(path).delete(), 10);
         await S.db.doc("batches/" + id).delete();
       }, "Batch deleted");
       if (ok) { $("#batchModal")?.remove(); S.cycle = "all"; try { localStorage.setItem("rh.batch", "all"); } catch(_){} render(); }
@@ -1376,7 +1394,7 @@ function openGuide(){
 
 /* ---------- team access (owner assigns each person's team) ---------- */
 S.members = {}; S.roles = {}; S.rolePeople = {};
-const ROLE_OPTS = [["","No access"],["viewer","View only"],["planning","Planning & Merch"],["production","Production"],["fashion","Fashion (view & comment)"]];
+const ROLE_OPTS = [["","No access"],["viewer","View only"],["planning","Planning & Merch"],["production","Production"],["fashion","Fashion (view & comment)"],["admin","Admin (everything)"]];
 function openRoles(){
   $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="rolesModal"><div class="box" role="dialog" aria-label="Team access" style="width:min(620px,100%)">
     <div class="mh"><h2>Team access</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
@@ -1692,11 +1710,16 @@ function openRecvImport(){
     toast(`${n} colour${n===1?"":"s"} updated` + (ok ? "" : " before an error")); if (n) $("#rcvModal")?.remove();
   };
 }
+function trimSheet(ws){
+  try { let maxR = 0, maxC = 0; for (const k in ws) { if (k[0] === "!") continue; const c = XLSX.utils.decode_cell(k); const v = ws[k]; if (v && v.v !== undefined && v.v !== null && String(v.v).trim() !== "") { if (c.r > maxR) maxR = c.r; if (c.c > maxC) maxC = c.c; } }
+    ws["!ref"] = XLSX.utils.encode_range({s:{r:0, c:0}, e:{r:maxR, c:maxC}}); } catch(_) {}
+  return ws;
+}
 async function readSheetFile(f){
   if (!f) return null;
   if (/\.xlsx?$/i.test(f.name)) {
     if (!window.XLSX) { toast("Excel reader is still loading; try again in a second."); return null; }
-    const wb = XLSX.read(await f.arrayBuffer(), {type:"array"}); return XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], {FS:"\t", blankrows:false});
+    const wb = XLSX.read(await f.arrayBuffer(), {type:"array", dense:false}); return XLSX.utils.sheet_to_csv(trimSheet(wb.Sheets[wb.SheetNames[0]]), {FS:"\t", blankrows:false});
   }
   return await f.text();
 }

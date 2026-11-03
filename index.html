@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=8"></script>
-<script src="rh-boot.js?v=8"></script>
-<script type="module" src="firebase-shim.js?v=8"></script>
+<script src="config.js?v=9"></script>
+<script src="rh-boot.js?v=9"></script>
+<script type="module" src="firebase-shim.js?v=9"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -102,7 +102,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 [hidden]{display:none!important}
 .cellinfo{display:flex;gap:4px;justify-content:center;align-items:center;margin-top:3px;font-size:10.5px;color:var(--ink-2);white-space:nowrap}
 .sb{display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;font-size:10.5px;font-weight:700;white-space:nowrap}
-.sb.short{background:var(--bad-soft);color:var(--bad)}.sb.over{background:var(--warn-soft);color:var(--warn)}.sb.ok{background:var(--ok-soft);color:var(--ok)}
+.sb.short{background:var(--bad-soft);color:var(--bad)}.sb.over{background:var(--warn-soft);color:var(--warn)}.sb.ok{background:var(--ok-soft);color:var(--ok)}.sb.cx{background:var(--sunk);color:var(--ink-2);text-decoration:line-through;text-decoration-thickness:1px}
 .rs{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px}.rs.compact{font-size:11.5px}
 .factive{display:flex;gap:6px;flex-wrap:wrap;width:100%;align-items:center}
 .factive .chip{height:24px;cursor:pointer}
@@ -1534,18 +1534,28 @@ function recvStats(o){
   for (const k of keys) { const v = Number(base[k])||0, r = Number(rc[k])||0; ord += v; rec += r; if (r > v) over += r - v; else short += v - r; }
   return {ord, rec, short, over, closed: !!o.closedShort || o.status === "cancelled"};
 }
-function sizeBadge(v, r, started){
+function sizeBadge(v, r, started, closed){
   if (!r && !started) return "";
+  if (closed && r < v) return `<span class="sb cx" title="${fmt(v - r)} will not come — cancelled">cxl −${fmt(v - r)}</span>`;
   if (r > v) return `<span class="sb over" title="${fmt(r - v)} more than ordered">+${fmt(r - v)}</span>`;
   if (r === v && v) return `<span class="sb ok" title="complete">✓</span>`;
   if (r || started) return `<span class="sb short" title="${fmt(v - r)} still missing">−${fmt(v - r)}</span>`;
   return "";
 }
 function recvSummaryHTML(list, compact){
-  const t = list.reduce((a, o) => { const x = recvStats(o); a.ord += x.ord; a.rec += x.rec; a.short += x.short; a.over += x.over; return a; }, {ord:0, rec:0, short:0, over:0});
-  if (!t.rec) return "";
-  const closed = list.every(o => o.closedShort || o.status === "cancelled");
-  return `<span class="rs${compact ? " compact" : ""}"><span>Received <b>${fmt(t.rec)}</b> / ${fmt(t.ord)}</span>${t.short ? `<span class="sb short">${closed ? "cancelled" : "short"} −${fmt(t.short)}</span>` : ""}${t.over ? `<span class="sb over">over +${fmt(t.over)}</span>` : ""}${!t.short && !t.over ? `<span class="sb ok">complete ✓</span>` : ""}</span>`;
+  let ord = 0, rec = 0, open = 0, missing = 0, wholeCx = 0, over = 0;
+  for (const o of list) { const x = recvStats(o);
+    if (o.status === "cancelled") { wholeCx += x.ord; continue; }
+    ord += x.ord; rec += x.rec; over += x.over; if (o.closedShort) missing += x.short; else open += x.short; }
+  if (!rec && !wholeCx) return "";
+  if (!rec && compact) return "";
+  const parts = [`<span>Received <b>${fmt(rec)}</b> of ${fmt(ord)}</span>`];
+  if (open) parts.push(`<span class="sb short" title="ordered, not arrived yet">still to come ${fmt(open)}</span>`);
+  if (missing) parts.push(`<span class="sb cx" title="sizes that will not come: the colour was closed after a partial delivery">cancelled sizes ${fmt(missing)}</span>`);
+  if (over) parts.push(`<span class="sb over" title="arrived more than ordered">extra +${fmt(over)}</span>`);
+  if (!open && !missing && !over && rec) parts.push(`<span class="sb ok">complete ✓</span>`);
+  if (wholeCx && !compact) parts.push(`<span class="sb cx" title="whole colours cancelled before anything arrived">cancelled colours ${fmt(wholeCx)}</span>`);
+  return `<span class="rs${compact ? " compact" : ""}">${parts.join("")}</span>`;
 }
 /* cancel: if something already arrived, close it as received (the rest is cancelled) instead of wiping it */
 async function cancelOrder(o, text){
@@ -1582,13 +1592,13 @@ function matrixHTML(items, mode){
   const keys = sortSizes([...new Set(items.flatMap(o => [...Object.keys(o.sizes||{}), ...Object.keys((o.production||{}).sizes||{})]))]);
   const head = `<tr><th>Colour</th><th>Status</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total${items.some(o => receivedOf(o)) ? " (in/ordered)" : ""}</th></tr>`;
   const rows = items.map(o => {
-    const st = ST[o.status] || ST.draft; const req = o.sizes||{}, ap = (o.production||{}).sizes, rc = (o.receiving||{}).sizes||{};
+    const st = o.closedShort ? {tone:"warn", name:"Closed short"} : (ST[o.status] || ST.draft); const req = o.sizes||{}, ap = (o.production||{}).sizes, rc = (o.receiving||{}).sizes||{};
     const base = ap && sumObj(ap) ? ap : req;
     let cells, tot;
     if (mode === "receive" && ["approved","inprod","partial"].includes(o.status)) { cells = keys.map(k => { const left = Math.max(0, (Number(base[k])||0) - (Number(rc[k])||0)); const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td><input type="number" min="0" id="src-${esc(o.id)}-${esc(k)}" data-src="${esc(o.id)}" data-size="${esc(k)}" value="" placeholder="0" title="${fmt(left)} still to come"><div class="cellinfo"><span>${fmt(r)}/${fmt(v)}</span>${sizeBadge(v, r, r > 0)}</div></td>`; }); tot = null; }
     else if (mode === "change" && can("change", o)) { cells = keys.map(k => `<td><input type="number" min="0" id="sch-${esc(o.id)}-${esc(k)}" data-sch="${esc(o.id)}" data-size="${esc(k)}" value="${Number(base[k])||0}"><div class="hint" style="font-size:10.5px;margin-top:2px">now ${fmt(Number(base[k])||0)}</div></td>`); tot = sumObj(base); }
-    else { const anyIn = sumObj(rc) > 0; cells = keys.map(k => { const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td class="num">${v ? fmt(v) : "—"}${anyIn ? `<div class="cellinfo"><span>${fmt(r)} in</span>${sizeBadge(v, r, true)}</div>` : ""}</td>`; }); tot = sumObj(base); }
-    return `<tr><th><button type="button" data-open="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;border:0;background:transparent;padding:0;font-weight:600;text-align:left"><img class="thumb" style="width:24px;height:31px;border-radius:4px" src="${esc(imgFor(o))}" alt="">${esc(o.color)}</button></th><td><span class="chip ${st.tone} st">${esc(st.name)}</span>${o.pendingChange?` <span class="chip bad">change</span>`:""}</td>${cells.join("")}<td class="num">${(() => { const x = recvStats(o); if (!x.rec) return `<b>${fmt(x.ord)}</b>`; return `<b>${fmt(x.rec)}</b><span class="hint">/${fmt(x.ord)}</span><div class="cellinfo">${x.short ? `<span class="sb short">${x.closed ? "cxl" : ""} −${fmt(x.short)}</span>` : ""}${x.over ? `<span class="sb over">+${fmt(x.over)}</span>` : ""}${!x.short && !x.over ? `<span class="sb ok">✓</span>` : ""}</div>`; })()}</td></tr>`;
+    else { const anyIn = sumObj(rc) > 0; cells = keys.map(k => { const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td class="num">${v ? fmt(v) : "—"}${anyIn ? `<div class="cellinfo"><span>${fmt(r)} in</span>${sizeBadge(v, r, true, !!o.closedShort)}</div>` : ""}</td>`; }); tot = sumObj(base); }
+    return `<tr><th><button type="button" data-open="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;border:0;background:transparent;padding:0;font-weight:600;text-align:left"><img class="thumb" style="width:24px;height:31px;border-radius:4px" src="${esc(imgFor(o))}" alt="">${esc(o.color)}</button></th><td><span class="chip ${st.tone} st">${esc(st.name)}</span>${o.pendingChange?` <span class="chip bad">change</span>`:""}</td>${cells.join("")}<td class="num">${(() => { const x = recvStats(o); if (!x.rec) return `<b>${fmt(x.ord)}</b>`; return `<b>${fmt(x.rec)}</b><span class="hint">/${fmt(x.ord)}</span><div class="cellinfo">${x.short ? (x.closed ? `<span class="sb cx">cxl −${fmt(x.short)}</span>` : `<span class="sb short">−${fmt(x.short)}</span>`) : ""}${x.over ? `<span class="sb over">+${fmt(x.over)}</span>` : ""}${!x.short && !x.over ? `<span class="sb ok">✓</span>` : ""}</div>`; })()}</td></tr>`;
   }).join("");
   return `<div class="sizes tbl-wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -1625,7 +1635,7 @@ function renderStyleDrawer(){
   const feed = items.flatMap(o => feedFor(o.id).map(f => Object.assign({color:o.color}, f))).sort((a,b) => (a.at||0)-(b.at||0)).slice(-40);
   L.innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-label="${esc(o0.style)}" style="width:min(860px,100%)">
     <div class="d-h"><div class="x"><div style="min-width:0"><div class="eyebrow">${esc(cycleLabel(o0.cycle))} · ${items.length} colour${items.length>1?"s":""}</div><h2>${esc(o0.style)}</h2></div><button class="btn ghost" data-close type="button" aria-label="Close">✕</button></div>
-      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip plain">${fmt(tot)} pcs</span>${val?`<span class="chip plain">${fmt(Math.round(val))} EGP at cost</span>`:""}<span class="chip plain">${esc(o0.code||"")}</span><span class="chip plain">${esc(o0.fabric||"")}</span><span class="chip plain">${esc(factoryOf(o0))}</span>${STAGES.filter(s => by([s.id]).length).map(s => `<span class="chip ${s.tone} st">${by([s.id]).length} ${esc(s.name)}</span>`).join("")}</div>${recvSummaryHTML(items) ? `<div style="margin-top:6px">${recvSummaryHTML(items)}</div>` : ""}${items.some(o => o.closedShort) ? `<div class="hint" style="margin-top:4px">Closed short = cancelled after part of it arrived: the received pieces stay counted, only the missing ones are cancelled.</div>` : ""}</div>
+      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip plain">${fmt(tot)} pcs</span>${val?`<span class="chip plain">${fmt(Math.round(val))} EGP at cost</span>`:""}<span class="chip plain">${esc(o0.code||"")}</span><span class="chip plain">${esc(o0.fabric||"")}</span><span class="chip plain">${esc(factoryOf(o0))}</span>${STAGES.map(s => [s, by([s.id]).filter(o => !o.closedShort).length]).filter(([, n]) => n).map(([s, n]) => `<span class="chip ${s.tone} st">${n} ${esc(s.name)}</span>`).join("")}${items.filter(o => o.closedShort).length ? `<span class="chip warn st">${items.filter(o => o.closedShort).length} Closed short</span>` : ""}</div>${recvSummaryHTML(items) ? `<div style="margin-top:6px">${recvSummaryHTML(items)}</div>` : ""}${items.some(o => o.closedShort) ? `<div class="hint" style="margin-top:4px"><b>Closed short</b> = the colour was cancelled after part of it arrived: what arrived stays counted (and extra pieces are shown as +), only the sizes that did not arrive are cancelled (cxl). <b>Cancelled</b> colours had nothing delivered.</div>` : ""}</div>
     <div class="d-b">
       <div class="sec"><h4>Colours &amp; sizes${mode==="approve"?" — approve":mode==="receive"?" — receive now":mode==="change"?" — new quantities":""}</h4>${matrixHTML(items, mode)}<div class="hint" style="margin-top:6px">Click a colour to open it on its own (photos, single-colour edits, its history).</div></div>
       ${acts}

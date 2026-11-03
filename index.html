@@ -1,0 +1,1876 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="icon" href="placeholder.png">
+<script src="config.js"></script>
+<script src="rh-boot.js"></script>
+<script type="module" src="firebase-shim.js"></script>
+<title>CLOUD Restock Hub</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one working screen — top bar, cycle strip with stage counts, then Board / Table / Factories; a right-hand drawer opens one request with its workflow and thread. */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --sunk:#e9edeb; --line:#d5dcd9; --line-2:#c2cbc7;
+  --ink:#14211d; --ink-2:#4a5a55; --ink-3:#7a8a85;
+  --accent:#0d6b5c; --accent-ink:#ffffff; --accent-soft:#d9ece7;
+  --navy:#1c2f4a;
+  --ok:#1f7a4a; --ok-soft:#dcf0e3; --warn:#9a6200; --warn-soft:#fbecc9; --bad:#b4322b; --bad-soft:#f8dedb; --info:#2f5f9e; --info-soft:#dee8f6; --violet:#6a46a8; --violet-soft:#ebe3f7;
+  --shadow:0 1px 2px rgba(20,33,29,.06),0 8px 24px rgba(20,33,29,.08);
+  --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",Roboto,Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1614; --surface:#16201d; --sunk:#1c2825; --line:#2a3834; --line-2:#3a4a45;
+  --ink:#e6eeeb; --ink-2:#a9b8b3; --ink-3:#7c8c87;
+  --accent:#3bb39c; --accent-ink:#06201b; --accent-soft:#173a33; --navy:#9fb7d9;
+  --ok:#5cc58a; --ok-soft:#173826; --warn:#e3a93c; --warn-soft:#3a2c10; --bad:#f07c72; --bad-soft:#3d1c19; --info:#7fa8e2; --info-soft:#1a2a40; --violet:#b39ae6; --violet-soft:#2a2140;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1614; --surface:#16201d; --sunk:#1c2825; --line:#2a3834; --line-2:#3a4a45;
+  --ink:#e6eeeb; --ink-2:#a9b8b3; --ink-3:#7c8c87;
+  --accent:#3bb39c; --accent-ink:#06201b; --accent-soft:#173a33; --navy:#9fb7d9;
+  --ok:#5cc58a; --ok-soft:#173826; --warn:#e3a93c; --warn-soft:#3a2c10; --bad:#f07c72; --bad-soft:#3d1c19; --info:#7fa8e2; --info-soft:#1a2a40; --violet:#b39ae6; --violet-soft:#2a2140;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--surface)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* top bar */
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+.top-in{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:12px}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto;min-width:0}
+.brand h1{font-family:var(--f-display);font-weight:800;font-size:20px;letter-spacing:-.01em;margin:0;white-space:nowrap}
+.brand h1 b{color:var(--accent);font-weight:800}
+.brand small{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.ctrl{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sel,.inp{height:34px;border:1px solid var(--line-2);background:var(--surface);border-radius:8px;padding:0 10px}
+.inp{min-width:0}
+.btn{height:34px;border:1px solid var(--line-2);background:var(--surface);border-radius:8px;padding:0 12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{background:var(--sunk)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07);background:var(--accent)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.sm{height:28px;padding:0 9px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.who{display:flex;align-items:center;gap:8px;padding:3px 4px 3px 3px;border:1px solid var(--line);border-radius:999px;background:var(--sunk)}
+.who img{width:26px;height:26px;border-radius:50%}
+.who select{border:0;background:transparent;font-weight:600;padding-right:4px;height:26px}
+
+/* cycle strip */
+.strip{padding-block:16px 8px;display:grid;gap:14px}
+.cycle-row{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
+.cycle-title{min-width:0}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:600}
+.cycle-title h2{font-family:var(--f-display);font-size:26px;margin:2px 0 0;letter-spacing:-.015em;font-weight:700;text-wrap:balance}
+.dates{display:flex;gap:18px;flex-wrap:wrap;color:var(--ink-2);font-size:12.5px;margin-left:auto}
+.dates div{display:grid}
+.dates b{font-family:var(--f-mono);font-weight:500;color:var(--ink);font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.kpi{background:var(--surface);padding:10px 12px;display:grid;gap:2px}
+.kpi .v{font-family:var(--f-mono);font-size:20px;font-weight:600}
+.kpi .l{font-size:11.5px;color:var(--ink-3)}
+.kpi.bad .v{color:var(--bad)} .kpi.warn .v{color:var(--warn)} .kpi.ok .v{color:var(--ok)}
+.notice{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;color:var(--ink-2);font-size:13px}
+.notice.bad{border-color:var(--bad);background:var(--bad-soft);color:var(--ink)}
+
+/* tabs + filters */
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-block:10px}
+.tabs{display:flex;border:1px solid var(--line-2);border-radius:9px;overflow:hidden;background:var(--surface)}
+.tabs button{border:0;background:transparent;padding:0 14px;height:32px;font-weight:600;color:var(--ink-2)}
+.tabs button[aria-selected="true"]{background:var(--navy);color:var(--surface)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;align-items:center}
+.filters .inp{width:200px}
+#btnFilters[aria-pressed="true"]{background:var(--info-soft);color:var(--info);border-color:var(--info)}
+.gflow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.gs{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--surface);position:relative}
+.gn{flex:0 0 26px;height:26px;border-radius:50%;color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px}
+.gw{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-2);font-weight:700}
+.gloop{border:1px dashed var(--warn);background:var(--warn-soft);border-radius:10px;padding:10px 12px;font-size:13px}
+.gfaq{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.gfaq>div{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:grid;gap:3px;font-size:13px}.gfaq span{color:var(--ink-2);font-size:12.5px}
+@media (max-width:760px){.gflow{grid-template-columns:1fr}.gfaq{grid-template-columns:1fr}}
+.rrow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}.rrow .sel{width:230px}
+[hidden]{display:none!important}
+.factive{display:flex;gap:6px;flex-wrap:wrap;width:100%;align-items:center}
+.factive .chip{height:24px;cursor:pointer}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.fg{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:0;min-width:0}
+.fg legend{font-size:12px;font-weight:700;padding:0 4px;display:flex;gap:6px;align-items:center}
+.fl{display:grid;gap:2px}.fl.long{max-height:190px;overflow:auto}
+#fltModal .box{max-height:calc(100dvh - 32px);display:flex;flex-direction:column}#fltModal .mb{overflow:auto;flex:1 1 auto;min-height:0}
+.fg .inp[type=search]{width:100%;box-sizing:border-box}.fgrid{align-items:start}
+.fl label{display:flex;gap:6px;align-items:center;font-size:12.5px;padding:3px 2px;border-radius:5px;cursor:pointer}
+.fl label:hover{background:var(--sunk)}.fl label span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fl label em{font-style:normal;font-size:11px;color:var(--ink-3,#889)}
+.frs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.fr{display:grid;grid-template-columns:110px 1fr auto 1fr;gap:6px;align-items:center;font-size:12.5px}.fr .inp{height:30px;min-width:0}
+
+/* board */
+main{padding-block:4px 40px}
+.board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(250px,1fr);gap:12px;overflow-x:auto;padding-bottom:10px}
+.col{background:var(--sunk);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:200px;min-width:0}
+.col-h{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.col-h .dot{width:8px;height:8px;border-radius:50%}
+.col-h h3{margin:0;font-size:13px;font-weight:700;font-family:var(--f-display);letter-spacing:.01em}
+.col-h .owner{font-size:11px;color:var(--ink-3);margin-left:auto}
+.col-h .cnt{font-family:var(--f-mono);font-size:12px;color:var(--ink-2)}
+.col-b{padding:10px;display:grid;gap:8px;align-content:start}
+.empty-col{color:var(--ink-3);font-size:12.5px;padding:8px 4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 11px;display:grid;grid-template-columns:52px 1fr;gap:10px;text-align:left;width:100%;position:relative}
+.card .ci{display:grid;gap:5px;min-width:0}
+.thumb{width:52px;height:68px;border-radius:7px;object-fit:cover;background:var(--sunk);border:1px solid var(--line);display:block}
+.thumb.sm{width:34px;height:44px;border-radius:5px}
+.gallery{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.gallery .big{width:150px;height:195px;border-radius:10px;object-fit:cover;background:var(--sunk);border:1px solid var(--line)}
+.gallery .mini{width:64px;height:84px;border-radius:7px;object-fit:cover;border:1px solid var(--line);cursor:pointer;background:var(--sunk)}
+.gallery .mini.on{outline:2px solid var(--accent)}
+.drop{border:1.5px dashed var(--line-2);border-radius:10px;padding:10px;display:grid;gap:6px;place-items:center;min-height:84px;color:var(--ink-3);font-size:12px;text-align:center;width:150px}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.mytask{border-color:var(--accent)!important;color:var(--accent)}
+.mytask[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.presets{display:flex;gap:6px;flex-wrap:wrap}
+.card:hover{border-color:var(--line-2);box-shadow:var(--shadow)}
+.card .t{font-weight:600;font-size:13.5px;line-height:1.25}
+.card .sub{font-size:12px;color:var(--ink-2)}
+.card .meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.card .qty{font-family:var(--f-mono);font-weight:600}
+.card .ref{font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+.prio-edge{position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0}
+.chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+.chip.p1{background:var(--bad-soft);color:var(--bad)} .chip.p2{background:var(--warn-soft);color:var(--warn)} .chip.p3{background:var(--sunk);color:var(--ink-2);border-color:var(--line)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.warn{background:var(--warn-soft);color:var(--warn)} .chip.info{background:var(--info-soft);color:var(--info)} .chip.violet{background:var(--violet-soft);color:var(--violet)} .chip.plain{background:var(--sunk);color:var(--ink-2)}
+.chip.st{border-radius:5px}
+
+/* table */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;background:var(--sunk);position:sticky;top:0}
+td.n,th.n{text-align:right}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--sunk)}
+tfoot td{font-weight:600;background:var(--sunk)}
+
+/* factories */
+.fac-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.fac{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px;min-width:0}
+.fac h3{margin:0;font-family:var(--f-display);font-size:16px}
+.fac .row{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--ink-2)}
+.fac .row b{color:var(--ink);font-family:var(--f-mono);font-weight:500}
+.load{height:10px;border-radius:5px;background:var(--sunk);overflow:hidden;border:1px solid var(--line)}
+.load i{display:block;height:100%;background:var(--accent)}
+.load.over i{background:var(--bad)}
+.cap{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink-2)}
+.cap input{width:90px;height:28px}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(10,20,17,.35);z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(640px,100%);background:var(--surface);z-index:41;display:flex;flex-direction:column;box-shadow:var(--shadow);border-left:1px solid var(--line);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px)}
+.d-h{padding:14px 18px;border-bottom:1px solid var(--line);display:grid;gap:8px}
+.d-h .x{display:flex;gap:8px;align-items:flex-start}
+.d-h h2{margin:0;font-family:var(--f-display);font-size:20px;line-height:1.2;text-wrap:balance;min-width:0}
+.d-h .x .btn{margin-left:auto}
+.d-b{overflow-y:auto;padding:16px 18px;display:grid;gap:18px;align-content:start}
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.step{display:grid;gap:4px;font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.step i{height:4px;border-radius:2px;background:var(--line)}
+.step.done i{background:var(--accent)} .step.now i{background:var(--navy)} .step.now{color:var(--ink)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 16px}
+.kv div{display:grid;gap:1px;min-width:0}
+.kv span{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+.kv b{font-weight:500;overflow-wrap:anywhere}
+.sec h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3)}
+.sizes{overflow-x:auto}
+.sizes table td,.sizes table th{padding:6px 8px;text-align:center}
+.sizes table td:first-child,.sizes table th:first-child{text-align:left}
+.sizes input{width:56px;height:28px;text-align:center;border:1px solid var(--line-2);border-radius:6px;background:var(--surface)}
+.panel{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:10px;background:var(--sunk)}
+.panel .acts{display:flex;gap:8px;flex-wrap:wrap}
+.panel label{display:grid;gap:4px;font-size:12px;color:var(--ink-2)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+textarea.inp{height:auto;min-height:64px;padding:8px 10px;resize:vertical;width:100%}
+.feed{display:grid;gap:10px}
+.msg{display:grid;grid-template-columns:28px 1fr;gap:10px}
+.msg img{width:28px;height:28px;border-radius:50%}
+.msg .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12px;color:var(--ink-3)}
+.msg .h b{color:var(--ink);font-size:13px}
+.msg .body{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+.msg.event .body{color:var(--ink-2);font-size:12.5px}
+.msg.event{opacity:.95}
+.compose{display:grid;gap:8px}
+.hint{font-size:12px;color:var(--ink-3)}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:rgba(10,20,17,.35)}
+.modal .box{background:var(--surface);border-radius:14px;width:min(820px,100%);max-height:calc(100% - 32px);display:flex;flex-direction:column;box-shadow:var(--shadow);border:1px solid var(--line)}
+.modal .mh{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.modal .mh h2{margin:0;font-family:var(--f-display);font-size:18px}
+.modal .mh .btn{margin-left:auto}
+.modal .mb{padding:16px 18px;overflow-y:auto;display:grid;gap:14px}
+.modal .mf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--navy);color:var(--surface);padding:10px 16px;border-radius:10px;z-index:60;font-weight:500;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+.ro{font-size:12px;color:var(--warn);background:var(--warn-soft);border-radius:8px;padding:6px 10px}
+@media (max-width:640px){
+  .filters{margin-left:0;width:100%} .filters .inp{width:100%;flex:1 1 160px}
+  .dates{margin-left:0}
+  .steps{grid-template-columns:repeat(3,1fr)}
+}
+@media (prefers-reduced-motion:no-preference){.drawer{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}to{transform:none;opacity:1}}}
+</style>
+</head><body>
+
+
+<header class="top"><div class="wrap top-in">
+  <div class="brand"><h1>CLOUD <b>Restock</b> Hub</h1><small>Planning · Production · Fashion (view)</small></div>
+  <div class="ctrl">
+    <select id="cycleSel" class="sel" aria-label="Batch"></select>
+    <button id="btnGuide" class="btn ghost" type="button" title="How it works">? Guide</button>
+    <button id="btnNew" class="btn primary" type="button">+ New request</button>
+    <button id="btnImport" class="btn" type="button">Import sheet</button>
+    <button id="btnPL" class="btn" type="button">Product list</button>
+    <button id="btnRecv" class="btn" type="button" hidden>Import receiving</button>
+    <button id="btnExport" class="btn" type="button" hidden>Export</button>
+    <button id="btnRoles" class="btn" type="button" hidden>Team access</button>
+    <div class="who" title="Your team"><img id="meAv" alt="" onerror="this.hidden=true"><select id="teamSel" aria-label="Your team">
+      <option value="">Pick your team</option><option value="planning">Planning &amp; Merch</option><option value="fashion">Fashion (view &amp; comment)</option><option value="production">Production</option><option value="admin">All teams (admin)</option>
+    </select></div>
+  </div>
+</div></header>
+
+<section class="wrap strip">
+  <div class="cycle-row">
+    <div class="cycle-title"><div class="eyebrow" id="cycleEyebrow">Batch</div><h2 id="cycleName">All batches</h2><button id="btnEditBatch" class="btn sm" type="button" hidden style="margin-top:6px">Edit batch</button></div>
+    <div class="dates" id="cycleDates"></div>
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div id="status" class="notice">Connecting to the shared restock list…</div>
+</section>
+
+<div class="wrap bar">
+  <div class="tabs" role="tablist">
+    <button role="tab" data-view="board" aria-selected="true" type="button">Board</button>
+    <button role="tab" data-view="table" aria-selected="false" type="button">Table</button>
+    <button role="tab" data-view="factories" aria-selected="false" type="button">Factories</button>
+  </div>
+  <button id="btnMine" class="btn sm mytask" type="button" aria-pressed="false" hidden>Waiting for my team</button>
+  <div class="filters">
+    <input id="q" class="inp" type="search" placeholder="Search style, SKU, colour, ref…">
+    <select id="fFactory" class="sel" aria-label="Factory"><option value="">All factories</option></select>
+    <select id="fPrio" class="sel" aria-label="Priority"><option value="">All priorities</option><option value="P1">High</option><option value="P2">Medium</option><option value="P3">Low</option></select>
+    <label class="hint" style="display:flex;gap:6px;align-items:center"><input id="fClosed" type="checkbox"> Show on hold / cancelled</label>
+    <button id="btnFilters" class="btn" type="button" aria-pressed="false">Filters</button>
+  </div>
+  <div id="fActive" class="factive" hidden></div>
+</div>
+
+<main class="wrap" id="main"></main>
+<div id="layer"></div><div id="modals"></div>
+<datalist id="dlStyles"></datalist><datalist id="dlColors"></datalist><datalist id="dlFabrics"></datalist><datalist id="dlFactories"></datalist>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(() => {
+"use strict";
+/* ---------- constants ---------- */
+const STAGES = [
+  {id:"draft",      name:"Draft",              owner:"Planning",   tone:"plain",  dot:"var(--ink-3)"},
+  {id:"changes",    name:"Changes requested",  owner:"Planning",   tone:"warn",   dot:"var(--warn)"},
+  {id:"fashion",    name:"Fashion review",     owner:"Fashion",    tone:"violet", dot:"var(--violet)"},
+  {id:"production", name:"Production review",  owner:"Production", tone:"info",   dot:"var(--info)"},
+  {id:"approved",   name:"Approved · scheduled",owner:"Production",tone:"info",   dot:"var(--navy)"},
+  {id:"inprod",     name:"In production",      owner:"Production", tone:"info",   dot:"var(--accent)"},
+  {id:"partial",    name:"Partly received",    owner:"Production", tone:"warn",   dot:"var(--warn)"},
+  {id:"received",   name:"Received",           owner:"Done",       tone:"ok",     dot:"var(--ok)"},
+  {id:"hold",       name:"On hold",            owner:"—",          tone:"plain",  dot:"var(--ink-3)"},
+  {id:"cancelled",  name:"Cancelled",          owner:"—",          tone:"bad",    dot:"var(--bad)"}
+];
+const ST = Object.fromEntries(STAGES.map(s => [s.id, s]));
+const BOARD_COLS = [["draft","changes","fashion"],["production"],["approved"],["inprod"],["partial"],["received"]];
+const STEP_ORDER = ["draft","production","approved","inprod","received"];
+const DEFAULT_SIZES = ["XS","S","M","L","XL"];
+const SIZE_ORDER = ["XXS","XS","S","M","L","XL","XXL","2XL","3XL","FREE","OS","24","25","26","27","28","29","30","31","32","33","34","36","38","40","42","44","46"];
+const TEAM_NAMES = {planning:"Planning & Merch", fashion:"Fashion", production:"Production", admin:"All teams"};
+const LEAD_DAYS = 20;
+
+/* ---------- state ---------- */
+const S = { db:null, user:null, me:{id:null,name:"",avatarUrl:""}, isOwner:false, canWrite:null, readOnly:false,
+  team:"", cycle:"all", batches:{}, orders:[], feed:[], members:{}, factories:{}, view:"board", q:"", fFactory:"", fPrio:"", fClosed:false,
+  openId:null, loaded:{orders:false}, profiles:{}, assets:null, catalog:{styles:{},factories:[],fabrics:[]}, thumbs:{byColor:{},byStyle:{}}, mine:false, imgSel:0 };
+const MOQ_COLOUR = 30, MOQ_SIZE = 15;
+const FABRIC_STATES = ["", "Fabric in stock", "Fabric to order", "Fabric ordered", "Fabric arrived"];
+const SIZE_PRESETS = {"Tops XS–XL":["XS","S","M","L","XL"], "Men S–XXL":["S","M","L","XL","XXL"], "Jeans 24–34":["24","25","26","27","28","29","30","31","32","34"], "Men jeans 30–40":["30","32","34","36","38","40"], "One size":["FREE"]};
+const PLACEHOLDER = "placeholder.png";
+const norm = x => String(x||"").toUpperCase().replace(/[^A-Z0-9]+/g, "");
+let THUMB_C = {}, THUMB_S = {};
+/* website photos: JPEG sprite sheets, sliced once into small blob URLs */
+async function loadThumbs(T){
+  if (!T || !T.sheets) return;
+  S.thumbs = {updatedAt:T.updatedAt, source:T.source};
+  const inv = T.sheets.map(() => []);
+  for (const [k, [sh, i]] of Object.entries(T.byColor || {})) { const [st, co] = k.split("||"); inv[sh].push(["c", norm(st) + "|" + norm(co), i]); }
+  for (const [k, [sh, i]] of Object.entries(T.byStyle || {})) inv[sh].push(["s", norm(k), i]);
+  const cv = document.createElement("canvas"); cv.width = T.w; cv.height = T.h; const cx = cv.getContext("2d");
+  for (let n = 0; n < T.sheets.length; n++) {
+    const im = new Image(); im.src = T.sheets[n];
+    try { await im.decode(); } catch(_) { continue; }
+    for (const [t, key, i] of inv[n]) {
+      cx.clearRect(0, 0, T.w, T.h); cx.drawImage(im, (i % T.cols) * T.w, Math.floor(i / T.cols) * T.h, T.w, T.h, 0, 0, T.w, T.h);
+      const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", 0.82)); if (!blob) continue;
+      (t === "c" ? THUMB_C : THUMB_S)[key] = URL.createObjectURL(blob);
+    }
+    render();
+  }
+}
+const siteImg = o => THUMB_C[norm(o.style) + "|" + norm(o.color)] || "";
+const siteStyleImg = o => THUMB_S[norm(o.style)] || "";
+const blobSrc = id => window.__blobSrc ? window.__blobSrc(id) : "/_blob/" + id;
+function imgFor(o){
+  if (o.images && o.images.length) return blobSrc(o.images[0]);
+  return siteImg(o) || siteStyleImg(o) || PLACEHOLDER;
+}
+function imagesFor(o){
+  const list = (o.images||[]).map(blobSrc);
+  const c = siteImg(o) || siteStyleImg(o);
+  if (c) list.push(c);
+  return list;
+}
+function moqIssue(o){
+  const sz = o.sizes || {}, t = sumObj(sz);
+  if (!t) return "";
+  if (t < MOQ_COLOUR) return `Below MOQ (${t}/${MOQ_COLOUR} per colour)`;
+  const low = Object.entries(sz).filter(([,v]) => v > 0 && v < MOQ_SIZE).map(([k]) => k);
+  return low.length ? `Sizes under ${MOQ_SIZE}: ${low.join(", ")}` : "";
+}
+const waitingMine = o => (S.team === "planning" && ["draft","changes"].includes(o.status)) || (S.team === "production" && (["production","approved","inprod","partial"].includes(o.status) || !!o.pendingChange)) || (S.team === "admin" && (["draft","changes","fashion","production"].includes(o.status) || !!o.pendingChange));
+const targetSizes = o => (o.production && o.production.sizes && sumObj(o.production.sizes)) ? o.production.sizes : (o.sizes || {});
+function diffText(from, to){
+  const keys = sortSizes([...new Set([...Object.keys(from||{}), ...Object.keys(to||{})])]);
+  const parts = keys.map(k => { const d = (Number((to||{})[k])||0) - (Number((from||{})[k])||0); return d ? `${k} ${d>0?"+":""}${d}` : ""; }).filter(Boolean);
+  const t = sumObj(to) - sumObj(from);
+  return `${t>0?"+":""}${fmt(t)} pcs` + (parts.length ? ` (${parts.join(", ")})` : "");
+}
+try { const v = localStorage.getItem("rh.view"); if (v) S.view = v; const b = localStorage.getItem("rh.batch"); if (b) S.cycle = b; } catch(e) {}
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => (Number(n)||0).toLocaleString("en-US");
+const todayISO = () => { const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const addDays = (iso, n) => { const d = new Date(iso+"T00:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const daysBetween = (a, b) => Math.round((new Date(b+"T00:00:00") - new Date(a+"T00:00:00"))/86400000);
+const fmtDate = iso => { if (!iso) return "—"; const d = new Date(iso+"T00:00:00"); return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short"}); };
+const fmtDT = ms => { if (!ms) return ""; const d = new Date(ms); return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}); };
+const cycleLabel = c => c === "all" ? "All batches" : ((S.batches[c] && S.batches[c].name) || "No batch");
+const batchDrop = c => (S.batches[c] && S.batches[c].dropDate) || addDays(todayISO(), LEAD_DAYS);
+const sumObj = o => Object.values(o||{}).reduce((a,b) => a + (Number(b)||0), 0);
+const sortSizes = keys => keys.slice().sort((a,b) => { const ia = SIZE_ORDER.indexOf(String(a).toUpperCase()), ib = SIZE_ORDER.indexOf(String(b).toUpperCase()); return (ia<0?99:ia)-(ib<0?99:ib) || String(a).localeCompare(String(b)); });
+const toast = msg => { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2600); };
+const qtyOf = o => Number(o.qty) || sumObj(o.sizes);
+const approvedOf = o => o.production && o.production.sizes ? sumObj(o.production.sizes) : 0;
+const receivedOf = o => o.receiving && o.receiving.sizes ? sumObj(o.receiving.sizes) : 0;
+const factoryOf = o => (o.production && o.production.factory) || o.factory || "Unassigned";
+const due = o => (o.production && o.production.expectedDate) || o.neededBy || "";
+const isOpen = o => !["received","cancelled"].includes(o.status);
+function dueFlag(o){
+  if (!isOpen(o) || o.status === "hold") return null;
+  const d = due(o); if (!d) return null;
+  const left = daysBetween(todayISO(), d);
+  if (left < 0) return {cls:"bad", txt: Math.abs(left)+"d late"};
+  if (left <= 7) return {cls:"warn", txt: left === 0 ? "due today" : left+"d left"};
+  return {cls:"plain", txt: fmtDate(d)};
+}
+function can(action, o){
+  const t = S.team; if (S.readOnly) return false;
+  const any = t === "admin";
+  const st = o ? o.status : "";
+  switch(action){
+    case "create": return any || t === "planning";
+    case "edit": return (any || t === "planning") && ["draft","changes","fashion"].includes(st);
+    case "change": return (any || t === "planning") && ["production","approved","inprod","partial"].includes(st) && !o.pendingChange;
+    case "withdraw": return (any || t === "planning") && !!(o && o.pendingChange);
+    case "confirmChange": return (any || t === "production") && !!(o && o.pendingChange);
+    case "submit": return (any || t === "planning") && ["draft","changes","fashion"].includes(st);
+    case "fashion": return false;
+    case "prodReview": return (any || t === "production") && st === "production";
+    case "start": return (any || t === "production") && st === "approved";
+    case "receive": return (any || t === "production") && ["approved","inprod","partial"].includes(st);
+    case "reschedule": return (any || t === "production") && ["approved","inprod","partial"].includes(st);
+    case "hold": return (any || t === "planning") && ["draft","changes","fashion"].includes(st);
+    case "resume": return (any || t === "planning") && st === "hold";
+    case "cancel": return (any || t === "planning") && ["draft","changes","fashion","hold"].includes(st);
+    case "delete": return (any || t === "planning") && st === "draft";
+    case "capacity": return any || t === "planning" || t === "production";
+    case "comment": return !!t;
+  }
+  return false;
+}
+
+/* ---------- batches ---------- */
+function cycleList(){ return Object.entries(S.batches).sort((a,b) => (b[1].sheetDate||"").localeCompare(a[1].sheetDate||"") || (b[1].createdAt||0)-(a[1].createdAt||0)).map(([id]) => id); }
+function batchOptions(sel, withAll, withNew){
+  return (withAll ? `<option value="all" ${sel==="all"?"selected":""}>All batches</option>` : "") +
+    cycleList().map(id => { const b = S.batches[id]; return `<option value="${esc(id)}" ${id===sel?"selected":""}>${esc(b.name)} · ${esc(fmtDate(b.sheetDate))}${b.cancelledAt?" (cancelled)":""}</option>`; }).join("") +
+    (withNew ? `<option value="__new">+ New batch…</option>` : "");
+}
+function renderCycleSel(){
+  if (S.cycle !== "all" && !S.batches[S.cycle] && S.loaded.batches) S.cycle = "all";
+  $("#cycleSel").innerHTML = batchOptions(S.cycle, true, can("create"));
+}
+function openBatchForm(batchId, onDone){
+  const b = batchId ? S.batches[batchId] : null;
+  const t = todayISO(); const mon = new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"});
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="batchModal"><div class="box" role="dialog" aria-label="Batch" style="width:min(520px,100%)">
+    <div class="mh"><h2>${b ? "Edit batch" : "New batch"}</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb"><div class="grid2">
+      <label class="hint" style="grid-column:1/-1">Batch name<input class="inp" id="bName" value="${esc(b ? b.name : "Restock " + mon)}" placeholder="e.g. Restock 1 Dec, Winter drop 2"></label>
+      <label class="hint">Sheet sent to factories<input class="inp" type="date" id="bSheet" value="${esc(b ? b.sheetDate : t)}"></label>
+      <label class="hint">Drop / receiving date<input class="inp" type="date" id="bDrop" value="${esc(b ? b.dropDate : addDays(t, LEAD_DAYS))}"></label>
+      <label class="hint" style="grid-column:1/-1">Note<input class="inp" id="bNote" value="${esc(b ? b.note||"" : "")}" placeholder="optional"></label></div>
+      <div class="hint">The drop date becomes the “needed by” date of new requests in this batch. Changing it later does not move requests already in it.</div>
+      ${b ? batchManageHTML(batchId) : ""}</div>
+    <div class="mf"><button class="btn" data-mclose type="button">Cancel</button><button class="btn primary" id="bSave" type="button">${b ? "Save batch" : "Create batch"}</button></div></div></div>`);
+  $("#bSheet").addEventListener("change", () => { if (!b) $("#bDrop").value = addDays($("#bSheet").value || t, LEAD_DAYS); });
+  if (b) bindBatchManage(batchId);
+  $("#bSave").onclick = async () => {
+    const name = $("#bName").value.trim(), sheetDate = $("#bSheet").value, dropDate = $("#bDrop").value;
+    if (!name || !sheetDate || !dropDate) { toast("Name, sheet date and drop date are needed."); return; }
+    const body = {name:name.slice(0,80), sheetDate, dropDate, note:$("#bNote").value.trim().slice(0,300), updatedAt:Date.now(), updatedBy:S.me.id};
+    let id = batchId;
+    const ok = await write(async () => {
+      if (b) await S.db.doc("batches/" + batchId).update(body);
+      else { const r = await S.db.collection("batches").add(Object.assign(body, {createdAt:Date.now(), createdBy:S.me.id})); id = r.id; S.batches = Object.assign({}, S.batches, {[id]:body}); }
+    }, b ? "Batch saved" : "Batch created");
+    if (ok) { $("#batchModal")?.remove(); if (onDone) onDone(id); else { S.cycle = id; render(); } }
+  };
+}
+
+/* ---------- derived ---------- */
+function cycleOrders(){ return S.cycle === "all" ? S.orders : S.orders.filter(o => o.cycle === S.cycle); }
+function visibleOrders(){
+  const q = S.q.trim().toLowerCase();
+  return cycleOrders().filter(o => {
+    if (!S.fClosed && ["hold","cancelled"].includes(o.status)) return false;
+    if (S.fFactory && factoryOf(o) !== S.fFactory) return false;
+    if (S.fPrio && o.priority !== S.fPrio) return false;
+    if (S.mine && !waitingMine(o)) return false;
+    if (q && ![o.ref,o.style,o.code,o.color,o.fabric,factoryOf(o),o.category,o.season,o.reason,...Object.values(o.skus||{})].join(" ").toLowerCase().includes(q)) return false;
+    return passF(o);
+  }).sort((a,b) => (a.priority||"P9").localeCompare(b.priority||"P9") || (due(a)||"9").localeCompare(due(b)||"9") || (a.style||"").localeCompare(b.style||""));
+}
+let FEED_BY = {};
+function indexFeed(){ FEED_BY = {}; for (const f of S.feed) (FEED_BY[f.orderId] = FEED_BY[f.orderId] || []).push(f); for (const k in FEED_BY) FEED_BY[k].sort((a,b) => (a.at||0)-(b.at||0)); }
+const feedFor = id => FEED_BY[id] || [];
+
+/* ---------- render: header bits ---------- */
+function renderStrip(){
+  const b = S.batches[S.cycle];
+  $("#cycleName").textContent = cycleLabel(S.cycle);
+  $("#cycleEyebrow").textContent = b ? "Batch" + (b.note ? " · " + b.note : "") : "Every batch";
+  $("#btnEditBatch").hidden = !(b && can("create"));
+  if (b) {
+    const left = daysBetween(todayISO(), b.dropDate);
+    $("#cycleDates").innerHTML = `<div><span>Sheet to factories</span><b>${esc(fmtDate(b.sheetDate))}</b></div><div><span>Drop / receiving</span><b>${esc(fmtDate(b.dropDate))}</b></div><div><span>Days to drop</span><b style="color:${left<0?"var(--bad)":left<=7?"var(--warn)":"inherit"}">${left<0?Math.abs(left)+" late":left}</b></div>`;
+  } else {
+    const open = cycleList().filter(id => S.orders.some(o => o.cycle === id && isOpen(o)));
+    $("#cycleDates").innerHTML = `<div><span>Batches</span><b>${cycleList().length}</b></div><div><span>With open requests</span><b>${open.length}</b></div>`;
+  }
+  const os = visibleOrders().filter(o => o.status !== "cancelled");
+  const units = os.reduce((a,o) => a + qtyOf(o), 0);
+  const appr = os.reduce((a,o) => a + approvedOf(o), 0);
+  const rec = os.reduce((a,o) => a + receivedOf(o), 0);
+  const cnt = st => os.filter(o => st.includes(o.status)).length;
+  const late = os.filter(o => { const f = dueFlag(o); return f && f.cls === "bad"; }).length;
+  const soon = os.filter(o => { const f = dueFlag(o); return f && f.cls === "warn"; }).length;
+  const chg = os.filter(o => o.pendingChange).length;
+  const k = [
+    ["Changes to confirm", fmt(chg), chg ? "bad" : ""],
+    ["Styles·colours", fmt(os.length), ""], ["Units requested", fmt(units), ""],
+    ["Waiting Production", fmt(cnt(["production"])), cnt(["production"]) ? "warn" : ""],
+    ["In production", fmt(cnt(["approved","inprod","partial"])), ""],
+    ["Due in 7 days", fmt(soon), soon ? "warn" : ""], ["Late", fmt(late), late ? "bad" : ""],
+    [`Received · ${fmt(rec)} of ${fmt(os.reduce((a,o) => a + (approvedOf(o) || qtyOf(o)), 0))} pcs`, (os.length ? Math.round(rec / Math.max(1, os.reduce((a,o) => a + (approvedOf(o) || qtyOf(o)), 0)) * 100) : 0) + "%", rec ? "ok" : ""]
+  ];
+  const val = os.reduce((a,o) => a + valueOf(o), 0); if (val) k.splice(3, 0, ["Value at cost (EGP)", fmt(Math.round(val)), ""]);
+  $("#kpis").innerHTML = k.map(([l,v,c]) => `<div class="kpi ${c}"><span class="v">${v}</span><span class="l">${l}</span></div>`).join("");
+  const fs = $("#fFactory"); const facs = [...new Set(cycleOrders().map(factoryOf))].sort();
+  fs.innerHTML = `<option value="">All factories</option>` + facs.map(f => `<option ${f===S.fFactory?"selected":""}>${esc(f)}</option>`).join("");
+}
+
+/* ---------- render: views ---------- */
+function cardHTML(o){
+  const f = dueFlag(o), st = ST[o.status] || ST.draft, cm = S.feed.filter(x => x.orderId === o.id && x.kind === "comment").length;
+  const pr = o.priority || "P3";
+  const edge = pr === "P1" ? "var(--bad)" : pr === "P2" ? "var(--warn)" : "var(--line-2)";
+  const qty = approvedOf(o) || qtyOf(o);
+  const moq = ["draft","changes"].includes(o.status) ? moqIssue(o) : "";
+  const late = isOpen(o) && o.production && o.production.expectedDate && o.neededBy && o.production.expectedDate > o.neededBy;
+  return `<button class="card" type="button" data-open="${esc(o.id)}">
+    <span class="prio-edge" style="background:${edge}"></span>
+    <img class="thumb" src="${esc(imgFor(o))}" alt="" loading="lazy">
+    <span class="ci">
+    <span class="meta"><span class="ref">${esc(o.ref||"")}</span>${o.status==="changes"?`<span class="chip warn st">Changes requested</span>`:""}${o.pendingChange?`<span class="chip bad st">${o.pendingChange.kind==="cancel"?"Cancel to confirm":"Qty change to confirm"}</span>`:""}</span>
+    <span class="t">${esc(o.style||"Untitled style")}</span>
+    <span class="sub">${esc(o.color||"")}${o.fabric?" · "+esc(o.fabric):""}</span>
+    <span class="meta"><span class="qty">${fmt(qty)} pcs</span><span class="chip ${pr.toLowerCase()}">${esc(prioName(pr))}</span>${f?`<span class="chip ${f.cls}">${esc(f.txt)}</span>`:""}${moq?`<span class="chip warn" title="${esc(moq)}">MOQ</span>`:""}${late?`<span class="chip bad" title="Expected after the needed-by date">After need date</span>`:""}</span>
+    <span class="meta sub"><span>${esc(factoryOf(o))}</span>${o.production&&o.production.fabric?`<span>· ${esc(o.production.fabric)}</span>`:""}${cm?`<span>· ${cm} comment${cm>1?"s":""}</span>`:""}${o.status==="partial"?`<span>· ${fmt(receivedOf(o))}/${fmt(approvedOf(o))} in</span>`:""}</span>
+    </span>
+  </button>`;
+}
+function renderBoard(list){
+  return `<div class="board">` + BOARD_COLS.map(ids => {
+    const items = list.filter(o => ids.includes(o.status)); const s0 = ST[ids[0]];
+    let bulk = "";
+    if (ids[0] === "approved") { const n = items.filter(o => can("start", o)).length; if (n > 1) bulk = `<button class="btn sm" data-go="startAll" type="button">Mark all ${n} started</button>`; }
+    if (["approved","inprod","partial"].includes(ids[0]) && items.length && (S.team === "production" || S.team === "admin") && !S.readOnly) bulk += ` <button class="btn sm" data-go="recv" type="button">Import receiving</button>`;
+    if (ids[0] === "draft") { const n = items.filter(o => o.status === "draft" && qtyOf(o) > 0).length; if (n > 1 && can("submit", {status:"draft"})) bulk = `<button class="btn sm" data-bulk="submit" type="button">Send all ${n} to Production</button>`; }
+    return `<section class="col"><div class="col-h"><span class="dot" style="background:${s0.dot}"></span><h3>${esc(ids[0]==="draft"?"Draft & changes":s0.name)}</h3><span class="cnt">${items.length}</span><span class="owner">${esc(s0.owner)}</span></div>
+      ${bulk?`<div style="padding:8px 10px 0">${bulk}</div>`:""}
+      <div class="col-b">${items.length ? styleGroups(items).map(([k, its]) => styleCardHTML(k, its)).join("") : `<div class="empty-col">${emptyText(ids[0])}</div>`}</div></section>`;
+  }).join("") + `</div>`;
+}
+function emptyText(id){
+  return ({draft:"Planning adds styles here. Use “New request” or import the Factory Order Sheet from Power BI.", production:"Requests sent by Planning wait here for Production to confirm factory, quantity and receiving date.", approved:"Scheduled with a factory and a receiving date.", inprod:"Cut and sewing started.", partial:"Some sizes arrived.", received:"Fully received."})[id] || "Nothing here.";
+}
+function renderTable(list){
+  if (!list.length) return emptyBlock();
+  const rows = list.map(o => { const st = ST[o.status]||ST.draft, f = dueFlag(o); return `<tr data-open="${esc(o.id)}">
+    <td><img class="thumb sm" src="${esc(imgFor(o))}" alt="" loading="lazy"></td><td class="mono">${esc(o.ref||"")}</td><td><b>${esc(o.style||"")}</b></td><td>${esc(o.color||"")}</td><td>${esc(o.code||"")}</td><td>${esc(factoryOf(o))}</td>
+    <td><span class="chip ${(o.priority||"P3").toLowerCase()}">${esc(prioName(o.priority))}</span></td>
+    <td class="n num">${fmt(qtyOf(o))}</td><td class="n num">${approvedOf(o)?fmt(approvedOf(o)):"—"}</td><td class="n num">${receivedOf(o)?fmt(receivedOf(o)):"—"}</td><td class="n num">${o.unitCost?fmt(Math.round(valueOf(o))):"—"}</td>
+    <td class="num">${fmtDate(o.neededBy)}</td><td class="num">${fmtDate(o.production&&o.production.expectedDate)}</td>
+    <td><span class="chip ${st.tone} st">${esc(st.name)}</span> ${f&&f.cls!=="plain"?`<span class="chip ${f.cls}">${esc(f.txt)}</span>`:""}</td></tr>`; }).join("");
+  const t = list.reduce((a,o) => (a.q += qtyOf(o), a.a += approvedOf(o), a.r += receivedOf(o), a), {q:0,a:0,r:0});
+  return `<div class="tbl-wrap"><table><thead><tr><th></th><th>Ref</th><th>Style</th><th>Colour</th><th>Code</th><th>Factory</th><th>Prio</th><th class="n">Requested</th><th class="n">Approved</th><th class="n">Received</th><th class="n">Value</th><th>Needed by</th><th>Expected</th><th>Status</th></tr></thead>
+  <tbody>${rows}</tbody><tfoot><tr><td colspan="7">${list.length} lines</td><td class="n num">${fmt(t.q)}</td><td class="n num">${fmt(t.a)}</td><td class="n num">${fmt(t.r)}</td><td class="n num">${fmt(Math.round(list.reduce((a,o) => a + valueOf(o), 0)))||"—"}</td><td colspan="3"></td></tr></tfoot></table></div>`;
+}
+function renderFactories(){
+  const os = visibleOrders().filter(o => o.status !== "cancelled");
+  if (!os.length) return emptyBlock();
+  const by = {};
+  os.forEach(o => { const f = factoryOf(o); (by[f] = by[f] || []).push(o); });
+  const cards = Object.keys(by).sort().map(f => {
+    const list = by[f], units = list.reduce((a,o) => a + (approvedOf(o) || qtyOf(o)), 0);
+    const cap = Number((S.factories[slug(f)]||{}).capacity) || 0;
+    const pct = cap ? Math.min(100, Math.round(units/cap*100)) : 0;
+    const late = list.filter(o => { const x = dueFlag(o); return x && x.cls === "bad"; }).length;
+    const dates = list.map(due).filter(Boolean).sort();
+    const open = list.filter(isOpen).length;
+    return `<article class="fac">
+      <h3>${esc(f)}</h3>
+      <div class="row"><span>Lines</span><b>${list.length} (${open} open)</b></div>
+      <div class="row"><span>Units (approved, else requested)</span><b>${fmt(units)}</b></div>
+      <div class="row"><span>Receiving window</span><b>${dates.length ? fmtDate(dates[0]) + " – " + fmtDate(dates[dates.length-1]) : "—"}</b></div>
+      <div class="row"><span>Late lines</span><b style="color:${late?"var(--bad)":"inherit"}">${late}</b></div>
+      ${cap ? `<div class="load ${units>cap?"over":""}" title="${pct}% of monthly capacity"><i style="width:${pct}%"></i></div><div class="row"><span>${units>cap?"Over capacity by "+fmt(units-cap)+" pcs":"Load vs capacity"}</span><b>${Math.round(units/cap*100)}%</b></div>` : `<div class="hint">Set a monthly capacity to see the load.</div>`}
+      <div style="display:grid;gap:6px">${list.slice().sort((a,b) => (approvedOf(b)||qtyOf(b)) - (approvedOf(a)||qtyOf(a))).slice(0,6).map(o => `<button type="button" data-open="${esc(o.id)}" style="display:flex;gap:8px;align-items:center;border:0;background:transparent;padding:0;text-align:left"><img class="thumb sm" src="${esc(imgFor(o))}" alt="" loading="lazy"><span style="min-width:0;flex:1;font-size:12.5px"><b>${esc(o.style)}</b><br><span class="hint">${esc(o.color)} · ${esc((ST[o.status]||{}).name||"")}</span></span><span class="num">${fmt(approvedOf(o)||qtyOf(o))}</span></button>`).join("")}${list.length>6?`<span class="hint">+ ${list.length-6} more</span>`:""}</div>
+      <div class="cap"><span>Monthly capacity</span><input class="inp num" type="number" min="0" step="50" id="cap-${esc(slug(f))}" data-cap="${esc(f)}" value="${cap||""}" placeholder="pcs" ${can("capacity")?"":"disabled"}></div>
+    </article>`;
+  }).join("");
+  return `<div class="fac-grid">${cards}</div>`;
+}
+function emptyBlock(){
+  return `<div class="notice">No requests in ${esc(cycleLabel(S.cycle))} yet. ${can("create") ? (cycleList().length ? "Add one with “New request”, or import a sheet." : "Start with “Import sheet” or “New request”: each import goes into a batch with its own sheet date and drop date.") : S.team ? "Planning & Merch adds the styles for this cycle; they will appear here." : "Pick your team at the top right to start."}</div>`;
+}
+const slug = s => String(s||"unassigned").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,80) || "unassigned";
+
+let _rq = 0; window.__rhRender = () => render();
+function render(){ if (_rq) return; _rq = requestAnimationFrame(() => { _rq = 0; renderNow(); }); setTimeout(() => { if (_rq) { cancelAnimationFrame(_rq); _rq = 0; renderNow(); } }, 120); }
+function renderNow(){
+  renderCycleSel(); renderStrip();
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === S.view)));
+  $("#btnNew").hidden = !can("create");
+  $("#btnImport").hidden = !can("create");
+  $("#btnRecv").hidden = S.readOnly;
+  const mineN = cycleOrders().filter(waitingMine).length, bm = $("#btnMine");
+  bm.hidden = !S.team || S.team === "fashion"; bm.setAttribute("aria-pressed", String(S.mine)); bm.textContent = `Waiting for ${S.team==="admin"?"action":"my team"} (${mineN})`;
+  const list = visibleOrders(); renderActiveF();
+  const m = $("#main");
+  if (S.view === "table") m.innerHTML = renderTable(list);
+  else if (S.view === "factories") m.innerHTML = renderFactories();
+  else m.innerHTML = (cycleOrders().length ? "" : emptyBlock()) + renderBoard(list);
+  if (S.openId) renderDrawer(); else if (S.openStyle) renderStyleDrawer();
+  resolveNames();
+}
+
+/* ---------- names ---------- */
+async function resolveNames(){
+  if (!S.user) return;
+  const ids = new Set();
+  S.feed.forEach(f => f.by && ids.add(f.by)); S.orders.forEach(o => o.createdBy && ids.add(o.createdBy));
+  if (!ids.size) return;
+  try {
+    const ps = await S.user.profiles([...ids]);
+    let changed = false;
+    for (const id in ps){ const old = S.profiles[id]; if (!old || old.name !== ps[id].name) changed = true; S.profiles[id] = ps[id]; }
+    if (changed && S.openId) { const el = document.querySelector(".feed"); if (el) el.innerHTML = feedHTML(S.openId); }
+  } catch(e) {}
+}
+const nameOf = id => !id ? "Claude (import)" : (S.profiles[id] && S.profiles[id].name) || (id === S.me.id ? (S.me.name || "You") : "Someone");
+const avOf = id => (S.profiles[id] && S.profiles[id].avatarUrl) || (id === S.me.id ? S.me.avatarUrl : "") || "avatar.png";
+
+/* ---------- drawer ---------- */
+function feedHTML(id){
+  const items = feedFor(id);
+  if (!items.length) return `<div class="hint">No comments yet. Production and Fashion can leave notes here; every status change is logged too.</div>`;
+  return items.map(f => `<div class="msg ${f.kind==="event"?"event":""}"><img src="${esc(avOf(f.by))}" alt="">
+    <div><div class="h"><b>${esc(nameOf(f.by))}</b><span>${esc(TEAM_NAMES[f.team]||"")}</span><span>${esc(fmtDT(f.at))}</span></div>
+    <div class="body">${f.kind==="event"?"• ":""}${esc(f.text)}</div></div></div>`).join("");
+}
+function sizesTable(o, mode){
+  const keys = sortSizes([...new Set([...Object.keys(o.sizes||{}), ...Object.keys((o.production||{}).sizes||{}), ...Object.keys((o.receiving||{}).sizes||{})])]);
+  const row = (label, obj, inputName) => `<tr><th>${label}</th>${keys.map(k => inputName ? `<td><input type="number" min="0" id="${inputName}-${esc(k)}" data-${inputName}="${esc(k)}" value="${Number((obj||{})[k])||0}"></td>` : `<td class="num">${obj && obj[k] != null ? fmt(obj[k]) : "—"}</td>`).join("")}<td class="num"><b>${obj?fmt(sumObj(obj)):"—"}</b></td></tr>`;
+  const ap = o.production && o.production.sizes, rc = o.receiving && o.receiving.sizes;
+  let body = row("Requested", o.sizes);
+  if (mode === "approve") body += row("To make", o.sizes);
+  else if (ap) body += row("Approved", ap);
+  if (mode === "receive") body += row("Received so far", rc || {}) + row("Receive now", {}, "rc");
+  else if (rc) body += row("Received", rc);
+  return `<div class="sizes tbl-wrap"><table><thead><tr><th>Size</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function galleryHTML(o){
+  const imgs = imagesFor(o); const sel = Math.min(S.imgSel, Math.max(0, imgs.length - 1));
+  const big = imgs[sel] || PLACEHOLDER;
+  const upl = S.assets && S.team && !S.readOnly;
+  return `<div class="gallery"><img class="big" src="${esc(big)}" alt="${esc(o.style||"")} ${esc(o.color||"")}">
+    <div style="display:grid;gap:8px;align-content:start">
+      ${imgs.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${imgs.map((u,i) => `<img class="mini ${i===sel?"on":""}" src="${esc(u)}" alt="" data-img="${i}">`).join("")}</div>` : ""}
+      ${upl ? `<label class="drop" id="dropZone"><input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp" multiple hidden><span><b>Choose image from device</b><br>or drop / paste here</span></label>` : ""}
+      ${upl && (o.images||[]).length && imgs.length ? `<button class="btn sm" data-act="removeImg" type="button">Remove this photo</button>` : ""}
+      ${!(o.images||[]).length && siteImg(o) ? `<span class="hint">Photo from the website (this colour)${S.thumbs.updatedAt?" · refreshed "+esc(fmtDT(Date.parse(S.thumbs.updatedAt))):""}</span>` : !(o.images||[]).length && siteStyleImg(o) ? `<span class="hint">Website has no photo of this colour; showing another colour. Add your own.</span>` : !(o.images||[]).length ? `<span class="hint">No photo on the website. Choose one from your device.</span>` : ""}
+    </div></div>`;
+}
+async function shrink(file){
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width*k); c.height = Math.round(bmp.height*k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise(r => c.toBlob(b => r(b || file), "image/jpeg", 0.82));
+  } catch(e) { return file; }
+}
+async function addPhotos(files){
+  const o = S.orders.find(x => x.id === S.openId); if (!o || !S.assets) return;
+  const list = [...files].filter(f => /^image\/(png|jpeg|webp)$/.test(f.type)).slice(0, 6);
+  if (!list.length) { toast("Use a JPG, PNG or WebP photo."); return; }
+  toast("Uploading " + list.length + " photo" + (list.length>1?"s":"") + "…");
+  const ids = [];
+  for (const f of list){
+    try { const b = await shrink(f); const r = await S.assets.upload(b, {type:"image/jpeg"}); ids.push(r.id); }
+    catch(e){ toast(e && e.code === "too_large" ? "That photo is over 20 MB." : e && e.code === "quota_or_state" ? "Photo storage is full." : "A photo could not be uploaded."); }
+  }
+  if (!ids.length) return;
+  const images = (o.images||[]).concat(ids).slice(0, 12);
+  if (await write(async () => { await S.db.doc("orders/" + o.id).update({images, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, `Added ${ids.length} photo${ids.length>1?"s":""}`); }, "Photo added")) S.imgSel = 0;
+}
+function sizesCompare(from, to){
+  const keys = sortSizes([...new Set([...Object.keys(from||{}), ...Object.keys(to||{})])]);
+  return `<div class="sizes tbl-wrap"><table><thead><tr><th>Size</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total</th></tr></thead><tbody>
+    <tr><th>Now</th>${keys.map(k => `<td class="num">${fmt((from||{})[k]||0)}</td>`).join("")}<td class="num"><b>${fmt(sumObj(from))}</b></td></tr>
+    <tr><th>New</th>${keys.map(k => { const d = (Number((to||{})[k])||0) - (Number((from||{})[k])||0); return `<td class="num" style="${d?`font-weight:600;color:${d>0?"var(--ok)":"var(--bad)"}`:""}">${fmt((to||{})[k]||0)}</td>`; }).join("")}<td class="num"><b>${fmt(sumObj(to))}</b></td></tr></tbody></table></div>`;
+}
+function openChangeForm(o){
+  const cur = targetSizes(o); const keys = sortSizes(Object.keys(cur));
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="chgModal"><div class="box" role="dialog" aria-label="Change quantities" style="width:min(640px,100%)">
+    <div class="mh"><h2>Change ${esc(o.ref||"")} quantities</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb"><div class="hint">Current ${o.production&&o.production.sizes?"approved":"requested"} quantities are filled in. Type the new quantity per size; Production confirms before it applies.</div>
+      <div class="sizes tbl-wrap"><table><thead><tr><th>Size</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total</th></tr></thead><tbody>
+        <tr><th>Now</th>${keys.map(k => `<td class="num">${fmt(cur[k]||0)}</td>`).join("")}<td class="num"><b>${fmt(sumObj(cur))}</b></td></tr>
+        <tr><th>New</th>${keys.map(k => `<td><input type="number" min="0" data-ch="${esc(k)}" value="${Number(cur[k])||0}" aria-label="New qty ${esc(k)}"></td>`).join("")}<td class="num"><b id="chTot">${fmt(sumObj(cur))}</b></td></tr></tbody></table></div>
+      ${receivedOf(o) ? `<div class="ro">${fmt(receivedOf(o))} pcs are already received; the new total cannot go below that.</div>` : ""}
+      <label class="hint">Reason (Production sees it)<textarea class="inp" id="chNote" placeholder="e.g. sales dropped, reduce M and L; or stock-out risk, add 60 in S"></textarea></label></div>
+    <div class="mf"><button class="btn" data-mclose type="button">Cancel</button><button class="btn primary" id="chSend" type="button">Send to Production</button></div></div></div>`);
+  $("#chgModal").addEventListener("input", () => { $("#chTot").textContent = fmt([...document.querySelectorAll("[data-ch]")].reduce((a,el) => a + (Number(el.value)||0), 0)); });
+  $("#chSend").onclick = async () => {
+    const sizes = {}; document.querySelectorAll("[data-ch]").forEach(el => sizes[el.dataset.ch] = Math.max(0, Math.round(Number(el.value)||0)));
+    if (diffText(cur, sizes) === "0 pcs") { toast("No quantity changed."); return; }
+    if (receivedOf(o) && sumObj(sizes) < receivedOf(o)) { toast("The new total is below what is already received."); return; }
+    const note = $("#chNote").value.trim().slice(0,1000);
+    if (await write(async () => {
+      await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"qty", from:Object.assign({}, cur), sizes, note, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
+      await logEvent(o.id, `Quantity change requested: ${diffText(cur, sizes)}${note?" — "+note:""}`);
+    }, "Sent to Production for confirmation")) $("#chgModal")?.remove();
+  };
+}
+function stepsHTML(o){
+  let idx = STEP_ORDER.indexOf(o.status === "changes" ? "draft" : o.status === "partial" ? "inprod" : o.status);
+  return `<div class="steps">${["Planning","Production","Scheduled","Making","Received"].map((n,i) => `<div class="step ${idx>i||o.status==="received"?"done":""} ${idx===i&&o.status!=="received"?"now":""}"><i></i>${n}</div>`).join("")}</div>`;
+}
+function renderDrawer(){
+  const o = S.orders.find(x => x.id === S.openId);
+  const L = $("#layer");
+  if (!o) { L.innerHTML = ""; S.openId = null; return; }
+  const st = ST[o.status] || ST.draft, f = dueFlag(o), p = o.production || {};
+  const keep = {};
+  L.querySelectorAll("input,textarea,select").forEach(el => { if (el.id) keep[el.id] = el.value; });
+  let mode = can("prodReview", o) ? "approve" : can("receive", o) ? "receive" : "";
+  let actions = "";
+  actions += sentBackHTML([o]);
+  if (can("submit", o)) actions += `<div class="panel"><b>Planning</b><div class="hint">${o.status==="changes"?"Production sent it back. Edit the request, then send it again.":"When the sizes and quantities are final, send it to Production."}</div><div class="acts"><button class="btn primary" data-act="submit" type="button">Send to Production</button><button class="btn" data-act="edit" type="button">Edit request</button>${can("delete",o)?`<button class="btn danger" data-act="delete" type="button">Delete draft</button>`:""}</div></div>`;
+  if (o.pendingChange) {
+    const pc = o.pendingChange;
+    actions += `<div class="panel" style="border-color:var(--bad);background:var(--bad-soft)"><b>${pc.kind==="cancel"?"Cancellation requested":"Quantity change requested"} by ${esc(nameOf(pc.by))} · ${esc(fmtDT(pc.at))}</b>
+      ${pc.kind==="cancel" ? `<div>Planning asks to cancel this request.</div>` : `<div class="mono">${esc(diffText(pc.from, pc.sizes))}</div>${sizesCompare(pc.from, pc.sizes)}`}
+      ${pc.note?`<div style="white-space:pre-wrap">“${esc(pc.note)}”</div>`:""}
+      <div class="acts">${can("confirmChange", o) ? `<button class="btn primary" data-act="confirmChange" type="button">Confirm ${pc.kind==="cancel"?"cancellation":"change"}</button><button class="btn" data-act="rejectChange" type="button">Can't do it</button>` : `<span class="hint">Waiting for Production to confirm.</span>`}${can("withdraw", o) ? `<button class="btn" data-act="withdraw" type="button">Withdraw</button>` : ""}</div>
+      ${can("confirmChange", o) ? `<div class="hint">“Can't do it” needs a reason in the comment box.</div>` : ""}</div>`;
+  }
+  if (can("change", o)) actions += `<div class="panel"><b>Change this order</b><div class="hint">Production already has this request. Quantity changes and cancellations reach them at once and apply after they confirm.</div><div class="acts"><button class="btn" data-act="changeQty" type="button">Increase / decrease qty</button><button class="btn danger" data-act="askCancel" type="button">Ask to cancel</button></div></div>`;
+  if (can("fashion", o)) actions += `<div class="panel"><b>Fashion review</b><div class="hint">Approve the style, colour and fabric for re-production, or send it back with a note (write the note below first).</div><div class="acts"><button class="btn primary" data-act="fashionOk" type="button">Approve → Production</button><button class="btn" data-act="fashionNo" type="button">Request changes</button></div></div>`;
+  if (can("prodReview", o)) actions += `<div class="panel"><b>Production approval</b><div class="grid2">
+      <label>Factory<input class="inp" id="pFactory" list="dlFactories" value="${esc(p.factory||o.factory||"")}" placeholder="Factory name"></label>
+      <label>Expected receiving date<input class="inp" type="date" id="pDate" value="${esc(p.expectedDate||o.neededBy||"")}"></label>
+      <label>Fabric<select class="sel" id="pFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}" ${s===(p.fabric||"")?"selected":""}>${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
+      <label>Fabric arrival<input class="inp" type="date" id="pFabricDate" value="${esc(p.fabricDate||"")}"></label></div>
+      <div class="hint">Production approves exactly what Planning requested — sizes and quantities can't be changed here. If the factory can't make it, press <b>Send back to Planning</b> with the reason (e.g. “factory can make only 200 of M”); Planning edits and sends it again.</div>
+      <div class="acts"><button class="btn primary" data-act="prodOk" type="button">Approve &amp; schedule</button><button class="btn" data-act="prodNo" type="button">Send back to Planning</button></div></div>`;
+  if (can("start", o)) actions += `<div class="panel"><b>Production</b><div class="acts"><button class="btn primary" data-act="start" type="button">Mark production started</button></div></div>`;
+  if (can("receive", o)) actions += `<div class="panel"><b>Receiving</b><div class="grid2"><label>Received on<input class="inp" type="date" id="rDate" value="${todayISO()}"></label></div><div class="hint">Enter the pieces that arrived in this delivery in the “Receive now” row above.</div><div class="acts"><button class="btn primary" data-act="receive" type="button">Record delivery</button></div></div>`;
+  if (can("reschedule", o)) actions += `<div class="panel"><b>Update schedule</b><div class="grid2"><label>Expected receiving<input class="inp" type="date" id="nDate" value="${esc(p.expectedDate||"")}"></label>
+      <label>Fabric<select class="sel" id="nFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}" ${s===(p.fabric||"")?"selected":""}>${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
+      <label>Fabric arrival<input class="inp" type="date" id="nFabricDate" value="${esc(p.fabricDate||"")}"></label></div><div class="hint">Write the reason in the comment box; it is saved with the change.</div><div class="acts"><button class="btn" data-act="reschedule" type="button">Save schedule</button></div></div>`;
+  const side = [];
+  if (can("edit", o) && o.status === "fashion") side.push(`<button class="btn sm" data-act="edit" type="button">Edit request</button>`);
+  if (can("hold", o)) side.push(`<button class="btn sm" data-act="hold" type="button">Put on hold</button>`);
+  if (can("resume", o)) side.push(`<button class="btn sm primary" data-act="resume" type="button">Resume</button>`);
+  if (can("cancel", o)) side.push(`<button class="btn sm danger" data-act="cancel" type="button">Cancel request</button>`);
+  if (!S.team && !S.readOnly) actions = `<div class="ro">Pick your team at the top right to see the actions for your team.</div>`;
+  if (S.readOnly) actions = `<div class="ro">You can view this request. Ask the owner for Contributor access to act on it.</div>`;
+  L.innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-label="Request ${esc(o.ref||"")}">
+    <div class="d-h"><div class="x"><div style="min-width:0"><div class="eyebrow">${esc(o.ref||"")} · ${esc(cycleLabel(o.cycle))}</div><h2>${esc(o.style||"Untitled")} — ${esc(o.color||"")}</h2></div><button class="btn ghost" data-close type="button" aria-label="Close">✕</button></div>
+      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip ${st.tone} st">${esc(st.name)}</span><span class="chip ${(o.priority||"P3").toLowerCase()}">${esc(prioName(o.priority))}</span>${f?`<span class="chip ${f.cls}">${esc(f.txt)}</span>`:""}${o.alert?`<span class="chip bad">${esc(o.alert)}</span>`:""}</div>
+      ${stepsHTML(o)}</div>
+    <div class="d-b">
+      ${galleryHTML(o)}
+      ${moqIssue(o) && ["draft","changes","fashion","production"].includes(o.status) ? `<div class="ro">${esc(moqIssue(o))}. The factory MOQ is ${MOQ_COLOUR} per colour and ${MOQ_SIZE} per size.</div>` : ""}
+      ${isOpen(o) && p.expectedDate && o.neededBy && p.expectedDate > o.neededBy ? `<div class="notice bad">Expected ${esc(fmtDate(p.expectedDate))}, ${daysBetween(o.neededBy, p.expectedDate)} day${daysBetween(o.neededBy, p.expectedDate)===1?"":"s"} after the needed-by date (${esc(fmtDate(o.neededBy))}).</div>` : ""}
+      <div class="kv">
+        <div><span>Style code</span><b class="mono">${esc(o.code||"—")}</b></div><div><span>Fabric</span><b>${esc(o.fabric||"—")}</b></div>
+        <div><span>Factory</span><b>${esc(factoryOf(o))}</b></div><div><span>Needed by</span><b>${esc(fmtDate(o.neededBy))}</b></div>
+        <div><span>Expected receiving</span><b>${esc(fmtDate(p.expectedDate))}</b></div><div><span>Category</span><b>${esc(o.category||"—")}</b></div>
+        <div><span>Unit cost</span><b>${o.unitCost ? fmt(o.unitCost)+" EGP" : "—"}</b></div><div><span>Value at cost</span><b>${o.unitCost ? fmt(Math.round(valueOf(o)))+" EGP" : "—"}</b></div>
+        <div><span>Fabric status</span><b>${esc(p.fabric||"—")}${p.fabricDate?" · "+esc(fmtDate(p.fabricDate)):""}</b></div>
+        <div><span>Requested by</span><b>${esc(nameOf(o.createdBy))}</b></div><div><span>Created</span><b>${esc(fmtDT(o.createdAt))}</b></div>
+      </div>
+      ${o.reason?`<div class="sec"><h4>Why we need it</h4><div style="white-space:pre-wrap">${esc(o.reason)}</div></div>`:""}
+      <div class="sec"><h4>Sizes &amp; quantities</h4>${sizesTable(o, mode)}</div>
+      ${actions}
+      ${side.length?`<div class="acts" style="display:flex;gap:8px;flex-wrap:wrap">${side.join("")}</div>`:""}
+      <div class="sec"><h4>Comments &amp; history</h4><div class="feed">${feedHTML(o.id)}</div></div>
+      ${can("comment") ? `<div class="compose"><textarea class="inp" id="cText" placeholder="Write a comment for ${esc(o.style||"this style")} (fabric notes, changes, delays…)"></textarea><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn primary" data-act="comment" type="button">Post comment</button></div></div>` : ""}
+    </div></aside>`;
+  for (const id in keep) { const el = document.getElementById(id); if (el) el.value = keep[id]; }
+}
+
+/* ---------- writes ---------- */
+async function pmap(list, fn, n = 8){ let i = 0, done = 0, err = null; const next = async () => { while (i < list.length && !err) { const x = list[i++]; try { await fn(x); done++; } catch(e) { err = e; } } };
+  await Promise.all(Array.from({length:Math.min(n, list.length)}, next)); if (err) { err.done = done; throw err; } return done; }
+async function write(fn, okMsg){
+  if (!S.db) { toast("The shared list is not connected, so this was not saved."); return false; }
+  try { await fn(); if (okMsg) toast(okMsg); return true; }
+  catch(e){
+    if (e && e.code === "invalid_argument" && S.canWrite !== true) { S.readOnly = true; render(); toast("You have view-only access, so changes cannot be saved."); }
+    else if (e && e.code === "quota_exceeded") toast("The restock list is full. Delete old cancelled drafts and try again.");
+    else toast("Not saved: " + ((e && e.message) || "try again in a moment."));
+    return false;
+  }
+}
+async function logEvent(orderId, text){
+  await S.db.collection("feed").add({orderId, kind:"event", text, by:S.me.id, team:S.team, at:Date.now()});
+}
+async function setStatus(o, status, extra, eventText){
+  const patch = Object.assign({status, updatedAt:Date.now(), updatedBy:S.me.id}, extra||{});
+  await S.db.doc("orders/" + o.id).update(patch);
+  await logEvent(o.id, eventText);
+}
+function readSizes(prefix){
+  const out = {};
+  document.querySelectorAll(`[data-${prefix}]`).forEach(el => { const v = Math.max(0, Math.round(Number(el.value)||0)); out[el.dataset[prefix]] = v; });
+  return out;
+}
+async function onAct(act){
+  const o = S.orders.find(x => x.id === S.openId); if (!o && act !== "comment") return;
+  const note = ($("#cText") && $("#cText").value.trim()) || "";
+  const withNote = t => note ? t + " — " + note : t;
+  const clearNote = () => { const c = $("#cText"); if (c) c.value = ""; };
+  if (act === "comment"){
+    if (!note) { toast("Write a comment first."); return; }
+    if (await write(() => S.db.collection("feed").add({orderId:o.id, kind:"comment", text:note.slice(0,4000), by:S.me.id, team:S.team, at:Date.now()}), "Comment posted")) clearNote();
+    return;
+  }
+  if (act === "submit") { if (!qtyOf(o)) { toast("Add quantities before sending."); return; } if (await write(() => setStatus(o, "production", {}, withNote("Sent to Production")), "Sent to Production")) clearNote(); }
+  else if (act === "edit") openForm(o);
+  else if (act === "changeQty") openChangeForm(o);
+  else if (act === "askCancel") {
+    if (!note) { toast("Write why it should be cancelled in the comment box first."); $("#cText") && $("#cText").focus(); return; }
+    if (await write(async () => { await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Cancellation requested — " + note); }, "Sent to Production for confirmation")) clearNote();
+  }
+  else if (act === "withdraw") { if (await write(async () => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote("Change request withdrawn")); }, "Change withdrawn")) clearNote(); }
+  else if (act === "confirmChange") {
+    const pc = o.pendingChange; if (!pc) return;
+    if (pc.kind === "cancel") { if (await write(() => setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, withNote("Production confirmed the cancellation")), "Cancellation confirmed")) clearNote(); }
+    else {
+      const extra = {pendingChange:null, sizes:pc.sizes, qty:sumObj(pc.sizes)};
+      if (o.production && o.production.sizes) extra.production = {sizes:pc.sizes};
+      let status = o.status;
+      if (["inprod","partial","approved"].includes(o.status) && receivedOf(o) > 0) status = receivedOf(o) >= sumObj(pc.sizes) ? "received" : "partial";
+      if (await write(() => setStatus(o, status, extra, withNote(`Production confirmed the change: ${diffText(pc.from, pc.sizes)}`)), "Change confirmed")) clearNote();
+    }
+  }
+  else if (act === "rejectChange") {
+    if (!note) { toast("Write the reason in the comment box first."); $("#cText") && $("#cText").focus(); return; }
+    if (await write(async () => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Production could not apply the change — " + note); }, "Change declined")) clearNote();
+  }
+  else if (act === "delete") confirmBox("Delete this draft?", "The request and its comments disappear for everyone.", "Delete", async () => {
+    if (await write(async () => { for (const f of feedFor(o.id)) await S.db.doc("feed/" + f.id).delete(); await S.db.doc("orders/" + o.id).delete(); }, "Draft deleted")) closeDrawer();
+  });
+  else if (act === "fashionOk") { if (await write(() => setStatus(o, "production", {fashion:{state:"approved", by:S.me.id, at:Date.now()}}, withNote("Fashion approved")), "Approved, sent to Production")) clearNote(); }
+  else if (act === "fashionNo") { if (!note) { toast("Write what should change in the comment box first."); $("#cText") && $("#cText").focus(); return; } if (await write(() => setStatus(o, "changes", {fashion:{state:"changes", by:S.me.id, at:Date.now()}}, "Fashion requested changes — " + note), "Sent back to Planning")) clearNote(); }
+  else if (act === "prodOk") {
+    const sizes = Object.assign({}, o.sizes), factory = ($("#pFactory").value||"").trim(), date = $("#pDate").value;
+    if (!factory) { toast("Enter the factory."); return; } if (!date) { toast("Enter the expected receiving date."); return; }
+    const t = sumObj(sizes), diff = t - qtyOf(o);
+    const fabric = $("#pFabric").value, fabricDate = $("#pFabricDate").value;
+    if (await write(() => setStatus(o, "approved", {production:{factory, expectedDate:date, sizes, fabric, fabricDate, by:S.me.id, at:Date.now()}},
+      withNote(`Production approved ${fmt(t)} pcs at ${factory}, receiving ${fmtDate(date)}${diff ? ` (${diff>0?"+":""}${fmt(diff)} vs request)` : ""}`)), "Approved and scheduled")) clearNote();
+  }
+  else if (act === "prodNo") { if (!note) { toast("Write the reason in the comment box first."); return; } if (await write(() => setStatus(o, "changes", {}, "Production sent it back — " + note), "Sent back to Planning")) clearNote(); }
+  else if (act === "start") { if (await write(() => setStatus(o, "inprod", {"production":Object.assign({}, o.production, {startedAt:Date.now()})}, withNote("Production started")), "Marked in production")) clearNote(); }
+  else if (act === "receive") {
+    const now = readSizes("rc"), n = sumObj(now); if (!n) { toast("Enter the received pieces per size."); return; }
+    const prev = (o.receiving && o.receiving.sizes) || {}; const tot = {...prev}; for (const k in now) tot[k] = (Number(tot[k])||0) + now[k];
+    const date = $("#rDate").value || todayISO(); const target = approvedOf(o) || qtyOf(o); const all = sumObj(tot);
+    const status = all >= target ? "received" : "partial";
+    const deliveries = ((o.receiving && o.receiving.deliveries) || []).concat([{date, qty:n, by:S.me.id}]).slice(-50);
+    if (await write(() => setStatus(o, status, {receiving:{sizes:tot, lastDate:date, deliveries}}, withNote(`Received ${fmt(n)} pcs on ${fmtDate(date)} (${fmt(all)}/${fmt(target)})`)), status === "received" ? "Fully received" : "Delivery recorded")) clearNote();
+  }
+  else if (act === "reschedule") {
+    const d = $("#nDate").value; if (!d) { toast("Pick the expected date."); return; }
+    const p0 = o.production || {}, old = p0.expectedDate, fab = $("#nFabric").value, fabD = $("#nFabricDate").value;
+    const parts = [];
+    if (d !== old) parts.push(`Receiving date ${fmtDate(old)} → ${fmtDate(d)}`);
+    if (fab !== (p0.fabric||"")) parts.push(fab ? fab : "Fabric status cleared");
+    if (fabD !== (p0.fabricDate||"")) parts.push(`Fabric arrival ${fmtDate(fabD)}`);
+    if (!parts.length) { toast("Nothing changed."); return; }
+    if (await write(async () => { await S.db.doc("orders/" + o.id).update({production:{expectedDate:d, fabric:fab, fabricDate:fabD}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote(parts.join(" · "))); }, "Schedule saved")) clearNote();
+  }
+  else if (act === "removeImg") {
+    const imgs = o.images || []; const sel = Math.min(S.imgSel, imgs.length - 1); if (sel < 0 || !imgs[sel]) return;
+    const id = imgs[sel], rest = imgs.filter((_,i) => i !== sel);
+    if (await write(async () => { await S.db.doc("orders/" + o.id).update({images:rest, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Removed a photo"); }, "Photo removed")) {
+      S.imgSel = 0; if (S.assets && !S.orders.some(x => x.id !== o.id && (x.images||[]).includes(id))) { try { await S.assets.delete(id); } catch(_){} }
+    }
+  }
+  else if (act === "hold") { if (await write(() => setStatus(o, "hold", {prevStatus:o.status}, withNote("Put on hold")), "On hold")) clearNote(); }
+  else if (act === "resume") { if (await write(() => setStatus(o, o.prevStatus || "draft", {}, withNote("Resumed")), "Resumed")) clearNote(); }
+  else if (act === "cancel") confirmBox("Cancel this request?", "It stays in the history as cancelled. Production will see it is no longer needed.", "Cancel request", async () => {
+    if (await write(() => setStatus(o, "cancelled", {prevStatus:o.status}, withNote("Request cancelled")), "Request cancelled")) clearNote();
+  });
+}
+
+async function onBulk(kind){
+  const list = visibleOrders().filter(o => kind === "submit" ? ["draft","fashion"].includes(o.status) && qtyOf(o) > 0 : kind === "start" ? can("start", o) : false);
+  if (!list.length) return;
+  const label = kind === "submit" ? `Send ${list.length} drafts to Production?` : `Mark ${list.length} approved requests as started?`;
+  const moqN = kind === "submit" ? list.filter(moqIssue).length : 0;
+  confirmBox(label, (moqN ? `${moqN} of them are below the factory MOQ. ` : "") + "Each one is logged in its history.", kind === "submit" ? "Send all" : "Mark started", async () => {
+    let n = 0;
+    toast(`Updating ${list.length}…`);
+    const ok = await write(() => pmap(list, async o => {
+      if (kind === "submit") await setStatus(o, "production", {}, "Sent to Production (bulk)");
+      else if (kind === "start") await setStatus(o, "inprod", {production:Object.assign({}, o.production, {startedAt:Date.now()})}, "Production started (bulk)");
+      n++; }), null);
+    toast(`${n} request${n===1?"":"s"} updated` + (ok ? "" : " before an error"));
+  });
+}
+
+/* ---------- forms ---------- */
+function nextRef(cycle){
+  const sd = (S.batches[cycle] && S.batches[cycle].sheetDate) || todayISO();
+  const pre = "RS-" + sd.slice(2,4) + sd.slice(5,7) + "-";
+  const nums = S.orders.filter(o => String(o.ref||"").startsWith(pre)).map(o => Number(String(o.ref).split("-").pop()) || 0);
+  const start = Math.max(0, ...nums) + 1;
+  return n => pre + String(start + n).padStart(3,"0");
+}
+function openForm(o){
+  const isNew = !o; o = o || {sizes:Object.fromEntries(DEFAULT_SIZES.map(s => [s,0])), priority:"P2", cycle:(S.cycle !== "all" ? S.cycle : (cycleList()[0] || "")) }; if (isNew) o.neededBy = batchDrop(o.cycle);
+  const sizeKeys = sortSizes(Object.keys(o.sizes||{}));
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="formModal"><div class="box" role="dialog" aria-label="${isNew?"New request":"Edit request"}">
+    <div class="mh"><h2>${isNew?"New restock request":"Edit "+esc(o.ref||"")}</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <form class="mb" id="reqForm">
+      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+        <div style="display:grid;gap:6px;justify-items:center"><img id="fImg" class="thumb" style="width:90px;height:117px" src="${esc(imgFor(o))}" alt="">
+        ${S.assets && isNew ? `<label class="btn sm" style="cursor:pointer">Choose image<input type="file" id="fImgFile" accept="image/png,image/jpeg,image/webp" hidden></label><span class="hint" id="fImgNote" style="max-width:120px;text-align:center"></span>` : ""}</div>
+        <div class="grid2" style="flex:1;min-width:240px">
+          <label class="hint">Style name<input class="inp" id="fStyle" list="dlStyles" required value="${esc(o.style||"")}" placeholder="Start typing, e.g. BASIC LONG SLEEVE TOP" autocomplete="off"></label>
+          <label class="hint">${isNew?"Colour(s) — separate with commas for several":"Colour"}<input class="inp" id="fColor" list="dlColors" required value="${esc(o.color||"")}" placeholder="e.g. BLACK, WHITE" autocomplete="off"></label>
+          <label class="hint">Style code<input class="inp" id="fCode" value="${esc(o.code||"")}" placeholder="e.g. WI-25-W-004"></label>
+          <label class="hint">Fabric<input class="inp" id="fFabric" list="dlFabrics" value="${esc(o.fabric||"")}" placeholder="e.g. Single Full Lycra (SFL)"></label>
+        </div>
+      </div>
+      <div id="colorPick" class="presets"></div>
+      <div class="grid2">
+        <label class="hint">Factory<input class="inp" id="fFac" list="dlFactories" value="${esc(o.factory||"")}" placeholder="Suggested factory"></label>
+        <label class="hint">Category<input class="inp" id="fCat" value="${esc(o.category||"")}" placeholder="e.g. BASICS"></label>
+        <label class="hint">Unit cost (EGP)<input class="inp num" type="number" min="0" step="0.01" id="fCost" value="${esc(o.unitCost||"")}" placeholder="e.g. 185"></label>
+        <label class="hint">Priority<select class="sel" id="fPri">${["P1","P2","P3"].map(p => `<option value="${p}" ${p===o.priority?"selected":""}>${prioName(p)}</option>`).join("")}</select></label>
+        <label class="hint">Needed by<input class="inp" type="date" id="fNeed" value="${esc(o.neededBy||"")}"></label>
+        <label class="hint">Batch<select class="sel" id="fCycle">${cycleList().length ? "" : `<option value="">— create a batch —</option>`}${batchOptions(o.cycle, false, true)}</select></label>
+      </div>
+      <div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span class="hint">Quantity per size${isNew?" (each colour gets these quantities)":""}</span><span class="presets" id="presets">${Object.keys(SIZE_PRESETS).map(k => `<button type="button" class="btn sm" data-preset="${esc(k)}">${esc(k)}</button>`).join("")}<button type="button" class="btn sm" id="fillEven" title="Spread a total over the sizes in a usual size curve">Spread total…</button></span></div>
+        <div class="sizes tbl-wrap"><table><thead><tr id="szHead"></tr></thead><tbody><tr id="szRow"></tr></tbody></table></div>
+        <div class="hint" style="margin-top:6px">Total per colour: <b class="num" id="szTotal">0</b> pcs · <span id="moqNote">Factory MOQ: ${MOQ_COLOUR} per colour, ${MOQ_SIZE} per size.</span></div></div>
+      <label class="hint">Why we need it (stock, sell-through, alert from Power BI)<textarea class="inp" id="fReason" placeholder="e.g. 11 pcs left, sells 25/day, out before arrival">${esc(o.reason||"")}</textarea></label>
+    </form>
+    <div class="mf"><button class="btn" data-mclose type="button">Cancel</button><button class="btn primary" id="saveReq" type="button">${isNew?"Save as draft":"Save changes"}</button></div></div></div>`);
+  let keys = sizeKeys.slice(); const vals = Object.assign({}, o.sizes||{});
+  const drawSizes = () => {
+    document.querySelectorAll("[data-sz]").forEach(el => vals[el.dataset.sz] = Math.max(0, Math.round(Number(el.value)||0)));
+    $("#szHead").innerHTML = keys.map(k => `<th>${esc(k)}</th>`).join("") + "<th></th>";
+    $("#szRow").innerHTML = keys.map(k => `<td><input type="number" min="0" data-sz="${esc(k)}" value="${Number(vals[k])||0}" aria-label="Size ${esc(k)}"></td>`).join("") + `<td><button type="button" class="btn sm" id="addSize">+ size</button></td>`;
+    upd();
+  };
+  const upd = () => {
+    const sz = {}; document.querySelectorAll("[data-sz]").forEach(el => sz[el.dataset.sz] = Number(el.value)||0);
+    $("#szTotal").textContent = fmt(sumObj(sz)); const m = moqIssue({sizes:sz});
+    $("#moqNote").textContent = m ? m + "." : `Meets the factory MOQ (${MOQ_COLOUR} per colour, ${MOQ_SIZE} per size).`; $("#moqNote").style.color = m ? "var(--warn)" : "var(--ok)";
+  };
+  const fillFromCatalog = () => {
+    const st = ($("#fStyle").value||"").trim().toUpperCase(); const c = S.catalog.styles[st];
+    const dl = document.getElementById("dlColors"); dl.innerHTML = c ? c.colors.map(x => `<option value="${esc(x)}">`).join("") : "";
+    $("#colorPick").innerHTML = c && isNew ? `<span class="hint" style="align-self:center">Colours in this style:</span>` + c.colors.map(x => `<button type="button" class="btn sm" data-addcolor="${esc(x)}">${esc(x)}</button>`).join("") : "";
+    if (!c) return;
+    if (!$("#fCode").value) $("#fCode").value = c.code || "";
+    if (!$("#fFabric").value) $("#fFabric").value = c.fabric || "";
+    if (!$("#fFac").value) $("#fFac").value = c.factory || "";
+    if (!$("#fCat").value) $("#fCat").value = c.category || "";
+    const pi = plInfo(st, ($("#fColor").value.split(",")[0]||"").trim(), null); if (pi && !$("#fCost").value && pi.cost) $("#fCost").value = pi.cost;
+    if (isNew && c.sizes && c.sizes.length && sumObj(vals) === 0 && ![...document.querySelectorAll("[data-sz]")].some(el => Number(el.value) > 0)) { keys = sortSizes(c.sizes); drawSizes(); }
+    previewImg();
+  };
+  let pickedFile = null;
+  const previewImg = () => {
+    if (pickedFile) return;
+    const col = ($("#fColor").value||"").split(",")[0].trim(); const probe = {style:$("#fStyle").value, color:col, images:o.images};
+    $("#fImg").src = imgFor(probe);
+    const n = $("#fImgNote"); if (n) n.textContent = siteImg(probe) ? "From the website" : siteStyleImg(probe) ? "Other colour on website" : ($("#fStyle").value ? "No website photo" : "");
+  };
+  const fi = $("#fImgFile");
+  if (fi) fi.addEventListener("change", () => { const f = fi.files[0]; if (!f) return; pickedFile = f; $("#fImg").src = URL.createObjectURL(f); $("#fImgNote").textContent = "Your photo"; });
+  drawSizes();
+  if (o.style) fillFromCatalog();
+  $("#fStyle").addEventListener("change", fillFromCatalog);
+  $("#fStyle").addEventListener("input", () => { if (S.catalog.styles[($("#fStyle").value||"").trim().toUpperCase()]) fillFromCatalog(); });
+  $("#fColor").addEventListener("input", previewImg);
+  bindBatchSelect("#fCycle", id => { if (isNew) $("#fNeed").value = batchDrop(id); });
+  $("#szRow").addEventListener("input", upd);
+  $("#formModal").addEventListener("click", e => {
+    const ac = e.target.closest("[data-addcolor]");
+    if (ac) { const cur = $("#fColor").value.split(",").map(s => s.trim()).filter(Boolean); if (!cur.includes(ac.dataset.addcolor)) cur.push(ac.dataset.addcolor); $("#fColor").value = cur.join(", "); previewImg(); return; }
+    const pr = e.target.closest("[data-preset]");
+    if (pr) { document.querySelectorAll("[data-sz]").forEach(el => vals[el.dataset.sz] = Number(el.value)||0); keys = SIZE_PRESETS[pr.dataset.preset].slice(); Object.keys(vals).forEach(k => { if (!keys.includes(k)) delete vals[k]; }); drawSizes(); return; }
+    if (e.target.closest("#fillEven")) {
+      const box = $("#fillEven"); if (box.dataset.open) return; box.dataset.open = "1";
+      box.insertAdjacentHTML("afterend", `<span id="spreadBox" style="display:inline-flex;gap:6px;align-items:center"><input class="inp num" id="spreadN" type="number" min="0" step="10" placeholder="Total pcs" style="width:100px;height:28px"><button type="button" class="btn sm primary" id="spreadGo">Spread</button></span>`);
+      $("#spreadN").focus(); return;
+    }
+    if (e.target.closest("#spreadGo")) {
+      const tot = Math.round(Number($("#spreadN").value)||0); if (!tot) return;
+      const curve = {XXS:.5,XS:.8,S:1.2,M:1.4,L:1.2,XL:.8,XXL:.5,"2XL":.4,"3XL":.3};
+      const w = keys.map(k => curve[String(k).toUpperCase()] || (/^\d+$/.test(k) ? 1 : 1)); const sw = w.reduce((a,b)=>a+b,0);
+      let left = tot; keys.forEach((k,i) => { const v = i === keys.length-1 ? left : Math.round(tot*w[i]/sw); vals[k] = Math.max(0,v); left -= vals[k]; });
+      document.querySelectorAll("[data-sz]").forEach(el => el.value = vals[el.dataset.sz] || 0);
+      $("#spreadBox").remove(); delete $("#fillEven").dataset.open; upd(); return;
+    }
+    if (e.target.closest("#addSize")) {
+      const wrap = $("#szRow"); if (wrap.querySelector("#newSz")) return;
+      const td = document.createElement("td"); td.innerHTML = `<input id="newSz" placeholder="Size" style="width:70px" aria-label="New size label">`;
+      wrap.insertBefore(td, wrap.lastElementChild); const inp = td.querySelector("input"); inp.focus();
+      inp.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); inp.blur(); } });
+      inp.addEventListener("blur", () => { const k = inp.value.trim().toUpperCase(); td.remove(); if (k && !keys.includes(k)) { keys = sortSizes(keys.concat([k])); drawSizes(); } });
+    }
+  });
+  $("#saveReq").onclick = async () => {
+    const style = $("#fStyle").value.trim().toUpperCase();
+    const colors = isNew ? [...new Set($("#fColor").value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean))] : [$("#fColor").value.trim().toUpperCase()].filter(Boolean);
+    if (!style || !colors.length) { toast("Style name and colour are required."); return; }
+    const sizes = {}; document.querySelectorAll("[data-sz]").forEach(el => { const v = Math.max(0, Math.round(Number(el.value)||0)); sizes[el.dataset.sz] = v; });
+    if (!sumObj(sizes)) { toast("Enter at least one quantity."); return; }
+    const cyc = $("#fCycle").value;
+    if (!cyc || !S.batches[cyc]) { toast("Choose a batch, or create one from the Batch list."); return; }
+    const base = {style, code:$("#fCode").value.trim().toUpperCase(), fabric:$("#fFabric").value.trim(), factory:$("#fFac").value.trim().toUpperCase(), category:$("#fCat").value.trim().toUpperCase(), unitCost:Math.max(0, Number($("#fCost").value)||0),
+      priority:$("#fPri").value, neededBy:$("#fNeed").value, cycle:cyc, sizes, qty:sumObj(sizes), reason:$("#fReason").value.trim().slice(0,2000), updatedAt:Date.now(), updatedBy:S.me.id};
+    $("#saveReq").disabled = true;
+    let ok;
+    if (isNew) {
+      const mk = nextRef(cyc); let n = 0, firstId = null;
+      ok = await write(async () => { for (const color of colors) {
+        const ref = mk(n);
+        if (pickedFile && !base.images) { try { const up = await S.assets.upload(await shrink(pickedFile), {type:"image/jpeg"}); base.images = [up.id]; } catch(_) { toast("The photo could not be uploaded; the request is saved without it."); base.images = []; } }
+        const doc = Object.assign({}, base, {color, ref, status:"draft", createdBy:S.me.id, createdAt:Date.now()}); Object.assign(doc, enrich(doc));
+        const r = await S.db.collection("orders").add(doc);
+        await logEvent(r.id, `Created ${ref} · ${fmt(base.qty)} pcs`); if (!firstId) firstId = r.id; n++;
+      } }, colors.length > 1 ? `${colors.length} drafts saved` : "Draft saved");
+      if (firstId && colors.length === 1) S.openId = firstId;
+    } else {
+      ok = await write(async () => { await S.db.doc("orders/" + o.id).update(Object.assign({}, base, {color:colors[0]})); await logEvent(o.id, `Edited request · ${fmt(base.qty)} pcs`); }, "Changes saved");
+    }
+    $("#saveReq") && ($("#saveReq").disabled = false);
+    if (ok) { $("#formModal")?.remove(); if (cyc !== S.cycle) { S.cycle = cyc; } render(); }
+  };
+}
+function confirmBox(title, text, okLabel, onOk){
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="cModal"><div class="box" role="alertdialog" aria-label="${esc(title)}" style="width:min(440px,100%)"><div class="mh"><h2>${esc(title)}</h2></div><div class="mb"><div>${esc(text)}</div></div><div class="mf"><button class="btn" id="cNo" type="button">Keep it</button><button class="btn danger" id="cYes" type="button">${esc(okLabel)}</button></div></div></div>`);
+  $("#cNo").onclick = () => $("#cModal")?.remove();
+  $("#cYes").onclick = async () => { $("#cModal")?.remove(); await onOk(); };
+}
+
+/* ---------- import (Power BI Factory Order Sheet or any CSV/TSV) ---------- */
+function parseDelimited(text){
+  const delim = text.split("\n", 2)[0].includes("\t") ? "\t" : (text.split("\n",2)[0].split(";").length > text.split("\n",2)[0].split(",").length ? ";" : ",");
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i+1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i+1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => String(x).trim() !== ""));
+}
+function buildImport(text){
+  const rows = parseDelimited(text.replace(/^﻿/,"")); if (rows.length < 2) return {error:"Paste the table with its header row."};
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const find = (...names) => head.findIndex(h => names.some(n => h === n || h.replace(/[^a-z]/g,"") === n.replace(/[^a-z]/g,"")));
+  const iStyle = find("title","style","style name","product"), iColor = find("color","colour"), iSize = find("size"), iSku = find("sku","variant sku"),
+        iQty = find("order qty","adjusted restock qty","restock qty","need quantity","need qty","qty","quantity","order quantity"), iFac = find("factory","supplier"), iFab = find("fabric","fabric name","first fabric name"),
+        iPrio = find("priority","restock priority"), iCode = find("style code","code","model num"),
+        iCost = find("unit cost","unitcost","cost","cost price","unit price","standard price");
+  if (iStyle < 0 || iColor < 0) return {error:"I need at least a Title (or Style) column and a COLOR column."};
+  const wideSizes = head.map((h,i) => [h.toUpperCase(), i]).filter(([h]) => SIZE_ORDER.includes(h));
+  const skuSize = iSize < 0 && !wideSizes.length && iSku >= 0 && iQty >= 0;
+  if (iSize < 0 && !wideSizes.length && !skuSize) return {error:"Add a SIZE column (or SKU) with a quantity column, or one column per size (XS, S, M…)."};
+  if ((iSize >= 0 || skuSize) && iQty < 0) return {error:"I found sizes but no quantity column (Order Qty / Adjusted Restock Qty / Qty)."};
+  const groups = new Map();
+  for (const r of rows.slice(1)){
+    const style = (r[iStyle]||"").trim().toUpperCase(), color = (r[iColor]||"").trim().toUpperCase();
+    if (!style || !color || /^total$/i.test(style)) continue;
+    const key = style + "||" + color;
+    const g = groups.get(key) || {style, color, sizes:{}, skus:{}, factory:"", fabric:"", priority:"", code:"", unitCost:0};
+    if (iCost >= 0 && r[iCost] && !g.unitCost) { const c = Number(String(r[iCost]).replace(/[^0-9.]/g,"")); if (c > 0) g.unitCost = Math.round(c*100)/100; }
+    if (iSize >= 0 || skuSize) { const s = (iSize >= 0 ? String(r[iSize]||"") : String(r[iSku]||"").split("-").pop()).trim().toUpperCase() || "FREE"; const q = Math.round(Number(String(r[iQty]).replace(/[, ]/g,""))||0); if (q > 0) g.sizes[s] = (g.sizes[s]||0) + q; if (iSku >= 0 && r[iSku]) g.skus[s] = String(r[iSku]).trim().toUpperCase(); }
+    else wideSizes.forEach(([s,i]) => { const q = Math.round(Number(String(r[i]).replace(/[, ]/g,""))||0); if (q > 0) g.sizes[s] = (g.sizes[s]||0) + q; });
+    if (iFac >= 0 && r[iFac]) g.factory = g.factory || String(r[iFac]).trim().toUpperCase();
+    if (iFab >= 0 && r[iFab]) g.fabric = g.fabric || r[iFab].trim();
+    if (iPrio >= 0 && r[iPrio]) { const p = prioFrom(r[iPrio]); if (p && (!g.priority || p < g.priority)) g.priority = p; }
+    if (iCode >= 0 && r[iCode]) g.code = g.code || r[iCode].trim().toUpperCase();
+    else if (iSku >= 0 && r[iSku] && !g.code) { const parts = String(r[iSku]).trim().toUpperCase().split("-"); if (parts.length >= 5) g.code = parts.slice(0, 4).join("-"); }
+    groups.set(key, g);
+  }
+  const list = [...groups.values()].filter(g => sumObj(g.sizes) > 0);
+  if (!list.length) return {error:"No rows with a quantity above 0 were found."};
+  list.forEach(g => { const i = plInfo(g.style, g.color, g.skus); g.fromPL = false; if (!i) return;
+    if (!g.unitCost && i.cost) { g.unitCost = i.cost; g.fromPL = true; }
+    Object.keys(g.sizes).forEach(k => { if (!g.skus[k] && i.skus[k]) g.skus[k] = i.skus[k]; });
+    if (!g.code && i.code) g.code = i.code; g.category = String(i.category||"").toUpperCase(); g.price = i.price || 0; g.season = i.season || ""; g.gender = i.gender || ""; });
+  return {list};
+}
+function openImport(){
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="impModal"><div class="box" role="dialog" aria-label="Import sheet">
+    <div class="mh"><h2>Import restock sheet</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb">
+      <div class="hint">Choose the Excel or CSV file (for example the restock sheet, or the Power BI <b>FACTORY ORDER SHEET</b> export), or paste the rows. Rows are grouped into one request per style and colour with the sizes inside. Columns read: Title, COLOR, Factory, Fabric, SKU, SIZE (or the size at the end of the SKU), Order Qty / Adjusted Restock Qty, <b>Priority</b> (High / Medium / Low, also P1–P3 or A–C), <b>Unit Cost</b>. Missing unit cost, SKUs, style code and category are filled from the product list.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="file" id="impFile" accept=".xlsx,.xls,.csv,.tsv,.txt"><span class="hint">or paste below</span></div>
+      <textarea class="inp" id="impText" style="min-height:140px;font-family:var(--f-mono);font-size:12px" placeholder="Factory&#9;Title&#9;Fabric&#9;COLOR&#9;SIZE&#9;SKU&#9;Order Qty&#9;Priority"></textarea>
+      <div class="grid2"><label class="hint">Batch<select class="sel" id="impCycle">${cycleList().length ? "" : `<option value="">— create a batch —</option>`}${batchOptions(S.cycle !== "all" ? S.cycle : (cycleList()[0]||""), false, true)}</select></label>
+      <label class="hint">Needed by (drop date)<input class="inp" type="date" id="impNeed" value="${esc(batchDrop(S.cycle !== "all" ? S.cycle : (cycleList()[0]||"")))}"></label></div>
+      <div class="hint">Each import can go into a new batch: pick “+ New batch…” and set its sheet date and drop date.</div>
+      <div id="impPrev"></div>
+    </div>
+    <div class="mf"><button class="btn" data-mclose type="button">Cancel</button><button class="btn" id="impCheck" type="button">Preview</button><button class="btn primary" id="impGo" type="button" disabled>Create drafts</button></div></div></div>`);
+  let parsed = null;
+  const preview = () => {
+    const res = buildImport($("#impText").value); parsed = null; $("#impGo").disabled = true;
+    if (res.error) { $("#impPrev").innerHTML = `<div class="notice bad">${esc(res.error)}</div>`; return; }
+    parsed = res.list; $("#impGo").disabled = false;
+    const tot = parsed.reduce((a,g) => a + sumObj(g.sizes), 0);
+    $("#impPrev").innerHTML = `<div class="hint" style="margin-bottom:6px">${parsed.length} style-colours · ${fmt(tot)} pcs${parsed.some(g => g.unitCost) ? ` · ${fmt(Math.round(parsed.reduce((a,g) => a + g.unitCost*sumObj(g.sizes), 0)))} EGP at cost` : " · no Unit Cost column found"} will be created as drafts.${parsed.some(g => g.fromPL) ? " * = unit cost taken from the product list." : ""}</div><div class="tbl-wrap" style="max-height:260px;overflow:auto"><table><thead><tr><th>Style</th><th>Colour</th><th>Factory</th><th>Prio</th><th>Sizes</th><th class="n">Pcs</th><th class="n">Unit cost</th></tr></thead><tbody>${parsed.map(g => `<tr><td>${esc(g.style)}</td><td>${esc(g.color)}</td><td>${esc(g.factory||"—")}</td><td>${esc(prioName(g.priority||"P2"))}</td><td class="mono">${esc(sortSizes(Object.keys(g.sizes)).map(k => k+":"+g.sizes[k]).join("  "))}</td><td class="n num">${fmt(sumObj(g.sizes))}</td><td class="n num">${g.unitCost?fmt(g.unitCost)+(g.fromPL?" *":""):"—"}</td></tr>`).join("")}</tbody></table></div>`;
+  };
+  $("#impFile").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (/\.xlsx?$/i.test(f.name)) {
+      if (!window.XLSX) { toast("Excel reader is still loading; try again in a second."); return; }
+      const wb = XLSX.read(await f.arrayBuffer(), {type:"array"});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      $("#impText").value = XLSX.utils.sheet_to_csv(ws, {FS:"\t", blankrows:false}); preview();
+    } else { const rd = new FileReader(); rd.onload = () => { $("#impText").value = String(rd.result); preview(); }; rd.readAsText(f); }
+  };
+  $("#impCheck").onclick = preview;
+  bindBatchSelect("#impCycle", id => { $("#impNeed").value = batchDrop(id); });
+  $("#impGo").onclick = async () => {
+    if (!parsed) return; const cyc = $("#impCycle").value, need = $("#impNeed").value;
+    if (!cyc || !S.batches[cyc]) { toast("Choose a batch, or create one from the Batch list."); return; } const mk = nextRef(cyc); $("#impGo").disabled = true;
+    let n = 0; toast(`Creating ${parsed.length} drafts…`); const ok = await write(async () => {
+      await pmap(parsed.map((g, i) => [g, i]), async ([g, i]) => {
+        const ref = mk(i);
+        const r = await S.db.collection("orders").add({ref, cycle:cyc, style:g.style, color:g.color, code:g.code, fabric:g.fabric, factory:g.factory, category:g.category||"", price:g.price||0, season:g.season||"", gender:g.gender||"", priority:g.priority||"P2", unitCost:g.unitCost||0, skus:g.skus||{},
+          neededBy:need, sizes:g.sizes, qty:sumObj(g.sizes), reason:"Imported from the Power BI restock sheet", status:"draft", createdBy:S.me.id, createdAt:Date.now(), updatedAt:Date.now(), updatedBy:S.me.id});
+        await logEvent(r.id, `Imported ${ref} · ${fmt(sumObj(g.sizes))} pcs`); n++;
+      });
+    }, null);
+    toast(ok ? `${n} drafts created` : `${n} drafts created before an error`);
+    if (n) { $("#impModal")?.remove(); S.cycle = cyc; render(); }
+  };
+}
+
+/* ---------- export ---------- */
+async function exportCSV(){
+  const dl = await window.claude?.use?.("downloads"); if (!dl) { toast("Downloads are not available here."); return; }
+  const lines = [["Ref","Batch","Factory","Style","Style code","Colour","Fabric","Size","Requested","Approved","Received","Priority","Needed by","Expected receiving","Fabric status","Fabric arrival","Status"]];
+  visibleOrders().forEach(o => {
+    const keys = sortSizes([...new Set([...Object.keys(o.sizes||{}), ...Object.keys((o.production||{}).sizes||{})])]);
+    const p = o.production || {};
+    keys.forEach(k => lines.push([o.ref, cycleLabel(o.cycle), factoryOf(o), o.style, o.code, o.color, o.fabric, k, (o.sizes||{})[k]||0, (p.sizes||{})[k]??"", ((o.receiving||{}).sizes||{})[k]??"", o.priority, o.neededBy, p.expectedDate||"", p.fabric||"", p.fabricDate||"", (ST[o.status]||{}).name||o.status]));
+  });
+  const csv = "﻿" + lines.map(r => r.map(v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; }).join(",")).join("\r\n");
+  try { await dl.save({filename:`Restock_${slug(cycleLabel(S.cycle))}${S.fFactory?"_"+slug(S.fFactory):""}.csv`, data:csv}); toast("CSV saved"); }
+  catch(e){ if (!(e && e.code === "declined")) toast("The file was not saved."); }
+}
+
+/* ---------- product list (SKU master) ---------- */
+const PRIO_NAME = {P1:"High", P2:"Medium", P3:"Low"};
+const prioName = p => PRIO_NAME[p || "P3"] || p || "Low";
+function prioFrom(raw){
+  const s = String(raw||"").trim().toUpperCase(); if (!s) return "";
+  const m = s.match(/P\s*([123])/); if (m) return "P" + m[1];
+  if (/^[123]$/.test(s)) return "P" + s;
+  if (/^(HIGH|URGENT|A|عالي|عالية)/.test(s)) return "P1";
+  if (/^(MED|MID|NORMAL|B|متوسط)/.test(s)) return "P2";
+  if (/^(LOW|C|منخفض)/.test(s)) return "P3";
+  return ({H:"P1",M:"P2",L:"P3"})[s.charAt(0)] || "";
+}
+const PL = {bySku:{}, byTC:{}, byT:{}, count:0, withCost:0, source:"", updatedAt:"", assetId:""};
+const median = a => { const b = a.filter(x => x > 0).sort((x,y) => x-y); return b.length ? b[Math.floor((b.length-1)/2)] : 0; };
+function indexPL(data, assetId){
+  if (!data || !Array.isArray(data.rows)) return;
+  const c = data.cols || []; const ix = n => c.indexOf(n);
+  const I = {sku:ix("sku"), title:ix("title"), color:ix("color"), size:ix("size"), cost:ix("cost"), price:ix("price"), category:ix("category"), season:ix("season"), gender:ix("gender"), type:ix("type"), year:ix("year"), code:ix("code")};
+  const bySku = {}, byTC = {}, byT = {}; let wc = 0;
+  for (const r of data.rows){
+    const g = k => I[k] >= 0 ? r[I[k]] : "";
+    const sku = String(g("sku")||"").toUpperCase(); if (!sku) continue;
+    const p = {sku, title:String(g("title")||"").toUpperCase(), color:String(g("color")||"").toUpperCase(), size:String(g("size")||"").toUpperCase() || sku.split("-").pop(),
+      cost:Number(g("cost"))||0, price:Number(g("price"))||0, category:g("category")||"", season:g("season")||"", gender:g("gender")||"", type:g("type")||"", year:g("year")||"",
+      code:g("code") || (sku.split("-").length >= 5 ? sku.split("-").slice(0,4).join("-") : "")};
+    if (p.cost) wc++;
+    bySku[sku] = p;
+    const tc = norm(p.title) + "|" + norm(p.color); (byTC[tc] = byTC[tc] || []).push(p);
+    (byT[norm(p.title)] = byT[norm(p.title)] || []).push(p);
+  }
+  Object.assign(PL, {bySku, byTC, byT, count:Object.keys(bySku).length, withCost:wc, source:data.source||"", updatedAt:data.updatedAt||"", assetId:assetId||""});
+}
+/* everything we know for one style-colour, from its SKUs first, else Title+Colour, else Title */
+function plInfo(style, color, skus){
+  let list = Object.values(skus||{}).map(s => PL.bySku[String(s).toUpperCase()]).filter(Boolean);
+  if (!list.length) list = PL.byTC[norm(style) + "|" + norm(color)] || [];
+  const styleOnly = !list.length; if (styleOnly) list = PL.byT[norm(style)] || [];
+  if (!list.length) return null;
+  const f = k => (list.find(p => p[k]) || {})[k] || "";
+  const sk = {}; if (!styleOnly) list.forEach(p => { if (p.size) sk[p.size] = p.sku; });
+  return {cost:median(list.map(p => p.cost)), price:median(list.map(p => p.price)), category:f("category"), season:f("season"), gender:f("gender"), type:f("type"), year:f("year"), code:f("code"), skus:sk, exact:!styleOnly};
+}
+function enrich(o){ /* fill only what is missing */
+  const i = plInfo(o.style, o.color, o.skus); if (!i) return {};
+  const out = {};
+  if (!Number(o.unitCost) && i.cost) out.unitCost = i.cost;
+  if (!o.price && i.price) out.price = i.price;
+  if (!o.category && i.category) out.category = String(i.category).toUpperCase();
+  if (!o.code && i.code) out.code = i.code;
+  if (!o.season && i.season) out.season = i.season;
+  if (!o.gender && i.gender) out.gender = i.gender;
+  const miss = Object.keys(o.sizes||{}).filter(k => !(o.skus||{})[k] && i.skus[k]);
+  if (miss.length) out.skus = Object.assign({}, o.skus||{}, Object.fromEntries(miss.map(k => [k, i.skus[k]])));
+  return out;
+}
+function parseProductList(text){
+  const rows = parseDelimited(text.replace(/^﻿/,"")); if (rows.length < 2) return {error:"Paste the product list with its header row."};
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const find = (...names) => names.map(n => head.findIndex(h => h === n || h.replace(/[^a-z]/g,"") === n.replace(/[^a-z]/g,""))).find(i => i >= 0) ?? -1;
+  const I = {sku:find("sku","variant sku","internal reference","default code","barcode"), title:find("title","product","product name","name","style","style name"), color:find("color","colour"),
+    size:find("size"), cost:find("unit cost","cost","cost per item","standard price","cost price"), price:find("current unit price","price","variant price","sales price","odoo list price","unit price"),
+    category:find("category","pos category","product category"), season:find("season name","season"), gender:find("gender"), type:find("type"), year:find("year","collection year"), code:find("style code","model num","code")};
+  if (I.sku < 0) return {error:"I need a SKU column (SKU / Variant SKU / Internal Reference)."};
+  const cols = Object.keys(I).filter(k => I[k] >= 0); const seen = {};
+  for (const r of rows.slice(1)){
+    const sku = String(r[I.sku]||"").trim().toUpperCase(); if (!sku) continue;
+    const v = cols.map(k => { const x = String(r[I[k]] ?? "").trim(); return ["cost","price"].includes(k) ? Math.round((Number(x.replace(/[^0-9.]/g,""))||0)*100)/100 : ["title","color","size","code"].includes(k) ? x.toUpperCase() : x; });
+    const ci = cols.indexOf("cost");
+    if (!seen[sku] || (ci >= 0 && !seen[sku][ci] && v[ci])) seen[sku] = v;
+  }
+  const list = Object.values(seen); if (!list.length) return {error:"No SKUs found."};
+  return {data:{cols, rows:list, source:"", updatedAt:todayISO()}, count:list.length, withCost:cols.includes("cost") ? list.filter(v => v[cols.indexOf("cost")]).length : 0, cols};
+}
+function openProductList(){
+  const missing = S.orders.filter(o => !["cancelled"].includes(o.status) && Object.keys(enrich(o)).length).length;
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="plModal"><div class="box" role="dialog" aria-label="Product list" style="width:min(640px,100%)">
+    <div class="mh"><h2>Product list</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb">
+      <div class="notice">Now using <b>${fmt(PL.count)} SKUs</b> (${fmt(PL.withCost)} with a unit cost)${PL.source?` from ${esc(PL.source)}`:""}${PL.updatedAt?` · ${esc(PL.updatedAt)}`:""}. Everything is matched by SKU (or Title + Colour): unit cost, price, category, season, gender, style code and the SKU of each size.</div>
+      ${S.assets && !S.readOnly ? `<div class="hint">Upload a newer product list (Excel/CSV). Columns read: SKU, Title, Color, Size, Unit Cost (or Cost / Cost per item), Price, Category, Season, Gender, Type, Year, Style Code. Only SKU is required.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="file" id="plFile" accept=".xlsx,.xls,.csv,.tsv,.txt"></div>
+      <div id="plPrev"></div>` : `<div class="ro">Only people who can edit this page can replace the product list.</div>`}
+      ${S.canWrite !== false && !S.readOnly ? `<div class="panel"><b>Existing requests</b><div class="hint">${missing} request${missing===1?"":"s"} miss a unit cost, SKU or category that the product list has.</div>
+        <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="plOver"> Also replace the unit cost on open requests (not received / cancelled) with the product-list cost</label>
+        <div class="acts"><button class="btn" id="plApply" type="button">Fill from product list</button></div></div>` : ""}
+    </div>
+    <div class="mf"><button class="btn" data-mclose type="button">Close</button>${S.assets && !S.readOnly ? `<button class="btn primary" id="plSave" type="button" disabled>Save product list</button>` : ""}</div></div></div>`);
+  let parsed = null;
+  const f = $("#plFile");
+  if (f) f.onchange = async e => {
+    const file = e.target.files[0]; const t = await readSheetFile(file); if (t == null) return;
+    const res = parseProductList(t); parsed = null; $("#plSave").disabled = true;
+    if (res.error) { $("#plPrev").innerHTML = `<div class="notice bad">${esc(res.error)}</div>`; return; }
+    parsed = res; parsed.data.source = file.name; $("#plSave").disabled = false;
+    $("#plPrev").innerHTML = `<div class="notice">${fmt(res.count)} SKUs · ${fmt(res.withCost)} with a unit cost · columns found: ${esc(res.cols.join(", "))}</div>`;
+  };
+  const sv = $("#plSave");
+  if (sv) sv.onclick = async () => {
+    if (!parsed) return; sv.disabled = true;
+    try {
+      const up = await S.assets.upload(new Blob([JSON.stringify(parsed.data)], {type:"application/json"}), {type:"application/json"});
+      await S.db.doc("settings/productList").set({assetId:up.id, count:parsed.count, withCost:parsed.withCost, source:parsed.data.source, updatedAt:Date.now(), updatedBy:S.me.id});
+      indexPL(parsed.data, up.id); toast(`Product list saved: ${fmt(parsed.count)} SKUs`); $("#plModal")?.remove(); render();
+    } catch(e) { sv.disabled = false; toast("Not saved: " + ((e && (e.message || e.code)) || "try again")); }
+  };
+  const ap = $("#plApply");
+  if (ap) ap.onclick = async () => {
+    const over = $("#plOver").checked; ap.disabled = true; let n = 0;
+    const ok = await write(() => pmap(S.orders.slice(), async o => {
+      if (o.status === "cancelled") return;
+      const patch = enrich(o);
+      if (over && !["received"].includes(o.status)) { const i = plInfo(o.style, o.color, Object.assign({}, o.skus, patch.skus)); if (i && i.cost && i.cost !== Number(o.unitCost)) patch.unitCost = i.cost; }
+      if (!Object.keys(patch).length) return;
+      patch.updatedAt = Date.now(); patch.updatedBy = S.me.id;
+      await S.db.doc("orders/" + o.id).update(patch); n++;
+    }), null);
+    toast(`${n} request${n===1?"":"s"} updated` + (ok ? "" : " before an error")); ap.disabled = false;
+  };
+}
+async function loadProductList(){
+  try { const r = await fetch("products.json"); if (r.ok && !PL.assetId) { indexPL(await r.json(), ""); render(); } } catch(_) {}
+}
+async function onProductListDoc(d){
+  if (!d || !d.assetId || d.assetId === PL.assetId) return;
+  try { const r = await fetch("/_blob/" + d.assetId); if (r.ok) { indexPL(await r.json(), d.assetId); render(); } } catch(_) {}
+}
+
+/* ---------- sent-back reason ---------- */
+function sentBack(o){
+  if (o.status !== "changes") return null;
+  const ev = feedFor(o.id).filter(f => f.kind === "event" && /sent it back/i.test(f.text || "")).pop();
+  return {text: ev ? String(ev.text).replace(/^Production sent it back\s*—\s*/i, "") : "", by: ev && ev.by, at: ev && ev.at};
+}
+function sentBackHTML(list){
+  const sb = list.map(o => [o, sentBack(o)]).filter(x => x[1]); if (!sb.length) return "";
+  return `<div class="panel" style="border-color:var(--warn);background:var(--warn-soft)"><b>↩ Production sent ${sb.length > 1 ? sb.length + " colours" : "this"} back to Planning</b>
+    ${sb.map(([o, r]) => `<div>${list.length > 1 ? `<b>${esc(o.color)}:</b> ` : ""}${r.text ? "“" + esc(r.text) + "”" : "No reason written"}${r.at ? ` <span class="hint">· ${esc(nameOf(r.by))}, ${esc(fmtDT(r.at))}</span>` : ""}</div>`).join("")}
+    <div class="hint">What to do: fix the request (click <b>Edit request</b> to change sizes, quantities, factory or fabric), or reply in the comments, then press <b>Send to Production</b> again. It goes back to Production's “Production review” column.</div></div>`;
+}
+
+/* ---------- batch: cancel / delete ---------- */
+function batchManageHTML(id){
+  const os = S.orders.filter(o => o.cycle === id);
+  const g = st => os.filter(o => st.includes(o.status));
+  const direct = g(["draft","changes","fashion","hold","production"]), ask = g(["approved","inprod","partial"]).filter(o => !o.pendingChange), rec = g(["received"]), can_ = g(["cancelled"]);
+  const deletable = os.every(o => ["draft","changes","fashion","cancelled","hold"].includes(o.status) && !o.production && !o.receiving);
+  if (!can("create")) return "";
+  return `<div class="panel" style="border-color:var(--bad)"><b>Cancel or delete this batch</b>
+    <div class="hint">${os.length} request${os.length===1?"":"s"} in it: ${direct.length} not started yet (cancel at once), ${ask.length} already approved or in production (Production must confirm), ${rec.length} received (kept), ${can_.length} cancelled.</div>
+    <label class="hint">Reason (Production sees it)<input class="inp" id="bWhy" placeholder="e.g. sales dropped, merged into December batch"></label>
+    <div class="acts"><button class="btn danger" id="bCancelAll" type="button" ${direct.length + ask.length ? "" : "disabled"}>Cancel whole batch</button>
+    <button class="btn danger" id="bDelete" type="button" ${deletable || S.isOwner ? "" : "disabled"}>Delete batch</button></div>
+    <div class="hint">${deletable ? "Delete removes the batch and all its requests and comments for everyone (nothing in it reached Production)." : S.isOwner ? `Delete removes the batch and all ${os.length} requests and comments for everyone, including ${ask.length + rec.length} that Production already approved or received — they disappear from Production's board too. Cancel keeps the history instead.` : "Delete is only possible while nothing in the batch was approved by Production (or by the page owner). Use Cancel instead: it keeps the history."}</div></div>`;
+}
+function bindBatchManage(id){
+  const c = $("#bCancelAll"), d = $("#bDelete"); if (!c) return;
+  c.onclick = () => {
+    const why = ($("#bWhy").value || "").trim();
+    if (!why) { toast("Write the reason first."); $("#bWhy").focus(); return; }
+    const os = S.orders.filter(o => o.cycle === id);
+    const direct = os.filter(o => ["draft","changes","fashion","hold","production"].includes(o.status)), ask = os.filter(o => ["approved","inprod","partial"].includes(o.status) && !o.pendingChange);
+    confirmBox(`Cancel ${S.batches[id].name}?`, `${direct.length} request${direct.length===1?"":"s"} are cancelled now. ${ask.length ? ask.length + " already with the factory get a cancellation request that Production confirms." : ""} Received ones stay.`, "Cancel batch", async () => {
+      let n = 0;
+      const ok = await write(async () => {
+        await pmap(direct, async o => { await setStatus(o, "cancelled", {prevStatus:o.status, pendingChange:null}, "Batch cancelled — " + why); n++; });
+        for (const o of ask) { await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note:"Batch cancelled — " + why, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Cancellation requested (whole batch) — " + why); n++; }
+        await S.db.doc("batches/" + id).update({cancelledAt:Date.now(), cancelReason:why, updatedAt:Date.now(), updatedBy:S.me.id});
+      }, null);
+      toast(`${n} request${n===1?"":"s"} updated` + (ok ? "" : " before an error")); $("#batchModal")?.remove(); render();
+    });
+  };
+  d.onclick = () => {
+    const os = S.orders.filter(o => o.cycle === id);
+    const started = os.filter(o => o.production || o.receiving || !["draft","changes","fashion","cancelled","hold"].includes(o.status)).length;
+    confirmBox(`Delete ${S.batches[id].name}?`, `The batch, its ${os.length} request${os.length===1?"":"s"} and their comments disappear for everyone${started ? ` — ${started} of them are already with Production` : ""}. This cannot be undone.`, "Delete for good", async () => {
+      const ok = await write(async () => {
+        await pmap(os.flatMap(o => feedFor(o.id).map(f => "feed/" + f.id)), path => S.db.doc(path).delete(), 10);
+        await pmap(os, o => S.db.doc("orders/" + o.id).delete(), 10);
+        await S.db.doc("batches/" + id).delete();
+      }, "Batch deleted");
+      if (ok) { $("#batchModal")?.remove(); S.cycle = "all"; try { localStorage.setItem("rh.batch", "all"); } catch(_){} render(); }
+    });
+  };
+}
+
+/* ---------- receiving template ---------- */
+async function downloadRecvTemplate(){
+  const open = visibleOrders().filter(o => ["approved","inprod","partial"].includes(o.status));
+  if (!open.length) { toast("No approved / in-production requests in this view."); return; }
+  const rows = [["SKU","Title","COLOR","SIZE","Factory","Ordered","Received so far","Still to come","Received Qty","Date"]];
+  open.forEach(o => { const t = targetSizes(o), rc = (o.receiving||{}).sizes || {};
+    sortSizes(Object.keys(t)).forEach(k => { if (!Number(t[k])) return; rows.push([(o.skus||{})[k]||"", o.style, o.color, k, factoryOf(o), Number(t[k]), Number(rc[k])||0, Math.max(0, Number(t[k]) - (Number(rc[k])||0)), "", ""]); }); });
+  const dl = await window.claude?.use?.("downloads"); if (!dl || !window.XLSX) { toast("Downloads are not available here."); return; }
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = rows[0].map((h,i) => ({wch: i===1?30:14}));
+  XLSX.utils.book_append_sheet(wb, ws, "Receiving");
+  try { await dl.save({filename:`Receiving_template_${slug(cycleLabel(S.cycle))}.xlsx`, data:new Uint8Array(XLSX.write(wb, {type:"array", bookType:"xlsx"}))}); toast("Template saved — fill Received Qty and import it"); }
+  catch(e) { if (!(e && e.code === "declined")) toast("The file was not saved."); }
+}
+
+/* ---------- guide ---------- */
+function openGuide(){
+  const step = (n, who, tone, title, body) => `<div class="gs"><div class="gn" style="background:var(--${tone})">${n}</div><div><div class="gw">${who}</div><b>${title}</b><div class="hint">${body}</div></div></div>`;
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="guideModal"><div class="box" role="dialog" aria-label="How it works" style="width:min(900px,100%)">
+    <div class="mh"><h2>How the Restock Hub works</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb">
+      <div class="gflow">
+        ${step(1,"Planning","ink-2","Import sheet / New request","Pick or create a batch (any date), import the restock sheet. Each style-colour becomes a draft with sizes, priority, unit cost and SKUs.")}
+        ${step(2,"Planning","info","Send to Production","Open a style card → “Send all colours to Production”, or “Send all to Production” on the Draft column.")}
+        ${step(3,"Production","warn","Approve &amp; schedule","Factory, expected receiving date and fabric status. Quantities and styles stay exactly as Planning sent them; if the factory can't make them, “Send back to Planning” with the reason.")}
+        ${step(4,"Production","violet","Mark started","When cutting/sewing begins.")}
+        ${step(5,"Production","ok","Receive","Type the pieces in the style table, or “Import receiving” with an Excel. Partial deliveries are fine; it closes itself when everything arrives.")}
+      </div>
+      <div class="gloop"><b>↩ If Production sends a style back:</b> it returns to Planning's first column with an orange “Changes requested” tag and the reason on top of the card. You edit it (or answer in the comments) and press <b>Send to Production</b> again → it goes back to step 3. Nothing is lost; every step is in the history.</div>
+      <div class="gfaq">
+        <div><b>Change quantities after Production has it?</b><span>Open the style → “Increase / decrease qty”, type the new numbers → Production sees a red “change to confirm” and presses Confirm or “Can't do it”.</span></div>
+        <div><b>Cancel one style?</b><span>Not sent yet: Cancel at once. Already with Production: “Ask to cancel” → Production confirms.</span></div>
+        <div><b>Cancel or delete a whole batch?</b><span>Pick the batch → <b>Edit batch</b> → “Cancel whole batch” (keeps history; ones in the factory need Production's confirm) or “Delete batch” (only while nothing reached Production).</span></div>
+        <div><b>Where does Production import receivings?</b><span>Top bar → <b>Import receiving</b>. Easiest: press “Download template” in that window, fill the Received Qty column, upload the same file.</span></div>
+        <div><b>Unit cost, SKUs, category?</b><span>Come from the sheet, else from <b>Product list</b> (upload a new one any time).</span></div>
+        <div><b>Find anything?</b><span><b>Filters</b> — stage, timing, factory, category, colour, size, dates, quantities, cost… KPIs and Export follow the filters.</span></div>
+        <div><b>Which team am I?</b><span>Top-right selector. Planning sees planning buttons, Production sees approve/start/receive, Fashion only views and comments, “All teams” sees everything.</span></div>
+        <div><b>What needs me now?</b><span>“Waiting for my team” button shows only what is waiting for your team.</span></div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn primary" data-mclose type="button">Got it</button></div></div></div>`);
+}
+
+/* ---------- team access (owner assigns each person's team) ---------- */
+S.members = {}; S.roles = {}; S.rolePeople = {};
+const ROLE_OPTS = [["","No access"],["viewer","View only"],["planning","Planning & Merch"],["production","Production"],["fashion","Fashion (view & comment)"]];
+function openRoles(){
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="rolesModal"><div class="box" role="dialog" aria-label="Team access" style="width:min(620px,100%)">
+    <div class="mh"><h2>Team access</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb">
+      <div class="hint">Only you (the owner) can change this. Each person sees only the buttons of the team you give them and cannot switch team. “View only” people see everything but cannot change anything; “No access” removes them. Share the page with them first (Share → can use), then they appear here after they open it once — or find them below.</div>
+      <div style="display:flex;gap:8px"><input class="inp" id="roleQ" type="search" placeholder="Find someone in your organisation by name"></div><div id="roleHits"></div>
+      <div id="roleList"></div></div>
+    <div class="mf"><button class="btn primary" data-mclose type="button">Done</button></div></div></div>`);
+  drawRoles();
+  let t; $("#roleQ").addEventListener("input", e => { clearTimeout(t); const q = e.target.value.trim(); t = setTimeout(async () => {
+    if (!S.user || !S.user.search) return; let hits = [];
+    try { hits = await S.user.search(q); } catch(_) {}
+    hits = (hits || []).filter(h => h.id && h.id !== S.me.id).slice(0, 8); hits.forEach(h => S.rolePeople[h.id] = h);
+    const el = $("#roleHits"); if (!el) return;
+    el.innerHTML = hits.map(h => `<div class="rrow"><span>${esc(h.name || "Someone")}</span><button class="btn sm" type="button" data-roleadd="${esc(h.id)}">Add</button></div>`).join("");
+  }, 250); });
+  $("#roleQ").addEventListener("focus", () => $("#roleQ").dispatchEvent(new Event("input")), {once:true});
+  $("#rolesModal").addEventListener("click", async e => { const b = e.target.closest("[data-roleadd]"); if (!b) return; S.rolePeople[b.dataset.roleadd] = S.rolePeople[b.dataset.roleadd] || {}; S.roles[b.dataset.roleadd] = S.roles[b.dataset.roleadd] || {team:""}; $("#roleHits").innerHTML = ""; $("#roleQ").value = ""; drawRoles(); });
+  $("#rolesModal").addEventListener("change", async e => { const el = e.target; if (!el.dataset.role) return;
+    const id = el.dataset.role, team = el.value;
+    await write(() => S.db.doc("roles/" + id).set({team, at:Date.now(), by:S.me.id}), "Team saved"); });
+}
+async function drawRoles(){
+  const el = $("#roleList"); if (!el) return;
+  const ids = [...new Set([...Object.keys(S.members), ...Object.keys(S.roles), ...Object.keys(S.rolePeople)])].filter(id => id && id !== S.me.id);
+  let ps = {}; try { ps = ids.length && S.user ? await S.user.profiles(ids) : {}; } catch(_) {}
+  if (!$("#roleList")) return;
+  el.innerHTML = ids.length ? ids.map(id => { const n = (ps[id] && ps[id].name) || (S.rolePeople[id] && S.rolePeople[id].name) || "Someone"; const cur = (S.roles[id] || {}).team || "";
+    return `<div class="rrow"><span>${esc(n)}${ps[id] && ps[id].guest ? ` <span class="chip plain">guest</span>` : ""}</span><select class="sel" data-role="${esc(id)}">${ROLE_OPTS.map(([v,l]) => `<option value="${v}" ${v===cur?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`; }).join("")
+    : `<div class="hint">Nobody else has opened the page yet.</div>`;
+}
+
+/* ---------- advanced filters ---------- */
+const FDEF = [
+  ["status","Stage", o => (ST[o.status]||{}).name || o.status],
+  ["prio","Priority", o => prioName(o.priority)],
+  ["due","Timing", o => { const f = dueFlag(o); if (!isOpen(o)) return "Closed"; if (!due(o)) return "No date"; return f && f.cls === "bad" ? "Late" : f && f.cls === "warn" ? "Due in 7 days" : "On time"; }],
+  ["flags","Needs attention", o => { const a = []; if (o.pendingChange) a.push("Change to confirm"); if (["draft","changes","production"].includes(o.status) && moqIssue(o)) a.push("Below MOQ");
+      if (isOpen(o) && o.production && o.production.expectedDate && o.neededBy && o.production.expectedDate > o.neededBy) a.push("Expected after needed-by");
+      if (!Number(o.unitCost)) a.push("No unit cost"); if (!Object.keys(o.skus||{}).length) a.push("No SKUs"); if (!(o.images||[]).length && !siteImg(o)) a.push("No photo");
+      if (approvedOf(o) && approvedOf(o) !== qtyOf(o)) a.push("Approved ≠ requested"); if (receivedOf(o) > (approvedOf(o)||qtyOf(o))) a.push("Over-received");
+      if (feedFor(o.id).some(f => f.kind === "comment")) a.push("Has comments"); return a.length ? a : ["None"]; }],
+  ["factory","Factory", o => factoryOf(o)],
+  ["category","Category", o => o.category || "—"],
+  ["season","Season", o => o.season || "—"],
+  ["gender","Gender", o => o.gender || "—"],
+  ["fabric","Fabric", o => o.fabric || "—"],
+  ["fabstat","Fabric status", o => (o.production && o.production.fabric) || "—"],
+  ["style","Style", o => o.style || "—"],
+  ["color","Colour", o => o.color || "—"],
+  ["size","Has size", o => Object.keys(targetSizes(o)).filter(k => Number(targetSizes(o)[k]) > 0)],
+  ["batch","Batch", o => cycleLabel(o.cycle)],
+  ["by","Created by", o => nameOf(o.createdBy)]
+];
+const FRANGE = [["need","Needed by","date"],["exp","Expected receiving","date"],["created","Created","date"],["qty","Pieces","num"],["cost","Unit cost","num"],["value","Value at cost","num"],["recv","Received %","num"]];
+S.F = {}; try { S.F = JSON.parse(localStorage.getItem("rh.filters") || "{}") || {}; } catch(_) {}
+const saveF = () => { try { localStorage.setItem("rh.filters", JSON.stringify(S.F)); } catch(_) {} };
+const fvals = (def, o) => [].concat(def[2](o));
+const isoOf = ms => { if (!ms) return ""; const d = new Date(ms); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const rangeVal = (k, o) => k === "need" ? o.neededBy || "" : k === "exp" ? (o.production && o.production.expectedDate) || "" : k === "created" ? isoOf(o.createdAt)
+  : k === "qty" ? (approvedOf(o) || qtyOf(o)) : k === "cost" ? Number(o.unitCost)||0 : k === "value" ? valueOf(o) : k === "recv" ? Math.round(receivedOf(o) / Math.max(1, approvedOf(o)||qtyOf(o)) * 100) : "";
+function passF(o, skip){
+  for (const d of FDEF) { if (d[0] === skip) continue; const sel = S.F[d[0]]; if (sel && sel.length && !fvals(d, o).some(v => sel.includes(String(v)))) return false; }
+  for (const [k,,t] of FRANGE) { const r = S.F["r_"+k]; if (!r) continue; const v = rangeVal(k, o);
+    if (r.min !== undefined && r.min !== "" ) { if (t === "date" ? (!v || v < r.min) : Number(v) < Number(r.min)) return false; }
+    if (r.max !== undefined && r.max !== "" ) { if (t === "date" ? (!v || v > r.max) : Number(v) > Number(r.max)) return false; } }
+  return true;
+}
+function activeF(){
+  const out = [];
+  FDEF.forEach(d => (S.F[d[0]]||[]).forEach(v => out.push({key:d[0], v, label:`${d[1]}: ${v}`})));
+  FRANGE.forEach(([k, n]) => { const r = S.F["r_"+k]; if (r && (r.min || r.max)) out.push({key:"r_"+k, label:`${n}: ${r.min||"…"} → ${r.max||"…"}`}); });
+  return out;
+}
+function renderActiveF(){
+  const a = activeF(), el = $("#fActive"); $("#btnFilters").textContent = a.length ? `Filters (${a.length})` : "Filters";
+  $("#btnFilters").setAttribute("aria-pressed", String(!!a.length));
+  el.hidden = !a.length;
+  el.innerHTML = a.map(x => `<button type="button" class="chip info" data-fx="${esc(x.key)}" ${x.v!==undefined?`data-fv="${esc(x.v)}"`:""} title="Remove">${esc(x.label)} ✕</button>`).join("") + (a.length ? `<button type="button" class="btn sm ghost" data-fx="__all">Clear all</button>` : "");
+}
+function openFilters(){
+  if ($("#fltModal")) return;
+  const base = cycleOrders().filter(o => S.fClosed || !["hold","cancelled"].includes(o.status));
+  const group = d => {
+    const counts = {}; base.filter(o => passF(o, d[0])).forEach(o => [...new Set(fvals(d, o).map(String))].forEach(v => counts[v] = (counts[v]||0) + 1));
+    (S.F[d[0]]||[]).forEach(v => { if (!(v in counts)) counts[v] = 0; });
+    let keys = Object.keys(counts); keys = d[0] === "size" ? sortSizes(keys) : d[0] === "status" ? STAGES.map(s => s.name).filter(n => keys.includes(n)) : d[0] === "prio" ? ["High","Medium","Low"].filter(n => keys.includes(n)) : keys.sort((a,b) => counts[b]-counts[a] || a.localeCompare(b));
+    if (!keys.length) return "";
+    const sel = S.F[d[0]] || [], long = keys.length > 8;
+    return `<fieldset class="fg"><legend>${esc(d[1])}${sel.length?` <span class="chip info">${sel.length}</span>`:""}</legend>
+      ${long ? `<input class="inp" type="search" placeholder="Search ${esc(d[1].toLowerCase())}" data-fsearch="${d[0]}" style="height:30px;margin-bottom:6px">` : ""}
+      <div class="fl ${long?"long":""}" data-fgroup="${d[0]}">${keys.map(v => `<label data-fname="${esc(v.toLowerCase())}"><input type="checkbox" data-fk="${d[0]}" value="${esc(v)}" ${sel.includes(v)?"checked":""}><span>${esc(v)}</span><em>${counts[v]}</em></label>`).join("")}</div></fieldset>`;
+  };
+  const rng = ([k, n, t]) => { const r = S.F["r_"+k] || {}; return `<div class="fr"><span>${esc(n)}</span><input class="inp" type="${t==="date"?"date":"number"}" data-rk="${k}" data-rb="min" value="${esc(r.min||"")}" placeholder="from"><span class="hint">→</span><input class="inp" type="${t==="date"?"date":"number"}" data-rk="${k}" data-rb="max" value="${esc(r.max||"")}" placeholder="to"></div>`; };
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="fltModal"><div class="box" role="dialog" aria-label="Filters" style="width:min(980px,100%)">
+    <div class="mh"><h2>Filters</h2><span class="hint" id="fCount"></span><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb"><div class="fgrid">${FDEF.map(group).join("")}</div>
+      <fieldset class="fg"><legend>Ranges</legend><div class="frs">${FRANGE.map(rng).join("")}</div></fieldset>
+      <div class="hint">Numbers next to each option = how many style-colours match with your other filters. Filters also apply to the KPIs, Table, Factories and Export, and are remembered on this device.</div></div>
+    <div class="mf"><button class="btn" type="button" id="fClear">Clear all</button><button class="btn primary" type="button" data-mclose>Show results</button></div></div></div>`);
+  const cnt = () => $("#fCount").textContent = `${fmt(visibleOrders().length)} style-colours match`;
+  cnt();
+  const M = $("#fltModal");
+  M.addEventListener("change", e => {
+    const el = e.target;
+    if (el.dataset.fk) { const k = el.dataset.fk; const set = new Set(S.F[k]||[]); el.checked ? set.add(el.value) : set.delete(el.value); S.F[k] = [...set]; if (!S.F[k].length) delete S.F[k]; }
+    else if (el.dataset.rk) { const k = "r_" + el.dataset.rk; S.F[k] = Object.assign({}, S.F[k], {[el.dataset.rb]: el.value}); if (!S.F[k].min && !S.F[k].max) delete S.F[k]; }
+    else return;
+    saveF(); render(); cnt();
+  });
+  M.addEventListener("input", e => { const k = e.target.dataset && e.target.dataset.fsearch; if (!k) return; const q = e.target.value.trim().toLowerCase();
+    M.querySelectorAll(`[data-fgroup="${k}"] label`).forEach(l => l.hidden = q && !l.dataset.fname.includes(q)); });
+  $("#fClear").onclick = () => { S.F = {}; saveF(); M.remove(); render(); openFilters(); };
+}
+
+/* ---------- style level (all colours of one style in one batch) ---------- */
+const styleKey = o => (o.cycle||"") + "||" + (o.style||"");
+function styleGroups(list){
+  const m = new Map();
+  list.forEach(o => { const k = styleKey(o); (m.get(k) || m.set(k, []).get(k)).push(o); });
+  return [...m.entries()];
+}
+const valueOf = o => (Number(o.unitCost)||0) * (approvedOf(o) || qtyOf(o));
+function styleCardHTML(key, items){
+  const o0 = items[0]; const pr = items.map(o => o.priority||"P3").sort()[0];
+  const edge = pr === "P1" ? "var(--bad)" : pr === "P2" ? "var(--warn)" : "var(--line-2)";
+  const qty = items.reduce((a,o) => a + (approvedOf(o) || qtyOf(o)), 0);
+  const flags = items.map(dueFlag).filter(Boolean); const worst = flags.find(f => f.cls === "bad") || flags.find(f => f.cls === "warn") || flags[0];
+  const pend = items.filter(o => o.pendingChange).length, moq = items.filter(o => ["draft","changes"].includes(o.status) && moqIssue(o)).length;
+  const val = items.reduce((a,o) => a + valueOf(o), 0);
+  return `<button class="card" type="button" data-open-style="${esc(key)}">
+    <span class="prio-edge" style="background:${edge}"></span>
+    <img class="thumb" src="${esc(imgFor(o0))}" alt="" loading="lazy">
+    <span class="ci">
+      <span class="meta"><span class="ref">${items.length} colour${items.length>1?"s":""}</span>${items.some(o => o.status === "changes")?`<span class="chip warn st">↩ Sent back</span>`:""}${pend?`<span class="chip bad st">${pend} change${pend>1?"s":""} to confirm</span>`:""}</span>
+      <span class="t">${esc(o0.style||"Untitled style")}</span>
+      <span class="meta">${items.slice(0,6).map(o => `<img class="thumb" style="width:20px;height:26px;border-radius:4px" src="${esc(imgFor(o))}" alt="${esc(o.color)}" title="${esc(o.color)}">`).join("")}${items.length>6?`<span class="hint">+${items.length-6}</span>`:""}</span>
+      <span class="meta"><span class="qty">${fmt(qty)} pcs</span><span class="chip ${pr.toLowerCase()}">${esc(prioName(pr))}</span>${worst?`<span class="chip ${worst.cls}">${esc(worst.txt)}</span>`:""}${moq?`<span class="chip warn">MOQ</span>`:""}</span>
+      <span class="meta sub"><span>${esc(factoryOf(o0))}</span>${val?`<span>· ${fmt(Math.round(val))} EGP</span>`:""}</span>
+    </span></button>`;
+}
+function styleItems(key){ return S.orders.filter(o => styleKey(o) === key).sort((a,b) => (a.color||"").localeCompare(b.color||"")); }
+function matrixHTML(items, mode){
+  const keys = sortSizes([...new Set(items.flatMap(o => [...Object.keys(o.sizes||{}), ...Object.keys((o.production||{}).sizes||{})]))]);
+  const head = `<tr><th>Colour</th><th>Status</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total</th></tr>`;
+  const rows = items.map(o => {
+    const st = ST[o.status] || ST.draft; const req = o.sizes||{}, ap = (o.production||{}).sizes, rc = (o.receiving||{}).sizes||{};
+    const base = ap && sumObj(ap) ? ap : req;
+    let cells, tot;
+    if (mode === "receive" && ["approved","inprod","partial"].includes(o.status)) { cells = keys.map(k => { const left = Math.max(0, (Number(base[k])||0) - (Number(rc[k])||0)); return `<td><input type="number" min="0" id="src-${esc(o.id)}-${esc(k)}" data-src="${esc(o.id)}" data-size="${esc(k)}" value="0" placeholder="${left}" title="${left} still to come"></td>`; }); tot = Math.max(0, sumObj(base) - sumObj(rc)); }
+    else if (mode === "change" && can("change", o)) { cells = keys.map(k => `<td><input type="number" min="0" id="sch-${esc(o.id)}-${esc(k)}" data-sch="${esc(o.id)}" data-size="${esc(k)}" value="${Number(base[k])||0}"></td>`); tot = sumObj(base); }
+    else { cells = keys.map(k => { const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td class="num">${v ? fmt(v) : "—"}${r ? `<br><span class="hint">${fmt(r)} in</span>` : ""}</td>`; }); tot = sumObj(base); }
+    return `<tr><th><button type="button" data-open="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;border:0;background:transparent;padding:0;font-weight:600;text-align:left"><img class="thumb" style="width:24px;height:31px;border-radius:4px" src="${esc(imgFor(o))}" alt="">${esc(o.color)}</button></th><td><span class="chip ${st.tone} st">${esc(st.name)}</span>${o.pendingChange?` <span class="chip bad">change</span>`:""}</td>${cells.join("")}<td class="num"><b>${fmt(tot)}</b></td></tr>`;
+  }).join("");
+  return `<div class="sizes tbl-wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+}
+function renderStyleDrawer(){
+  const items = styleItems(S.openStyle); const L = $("#layer");
+  if (!items.length) { S.openStyle = null; L.innerHTML = ""; return; }
+  const keep = {}; L.querySelectorAll("input,textarea,select").forEach(el => { if (el.id) keep[el.id] = el.value; });
+  const o0 = items[0], by = st => items.filter(o => st.includes(o.status));
+  const send = items.filter(o => can("submit", o) && qtyOf(o) > 0), toApprove = items.filter(o => can("prodReview", o)), toStart = items.filter(o => can("start", o)),
+        toRecv = items.filter(o => can("receive", o)), toChange = items.filter(o => can("change", o)), pend = items.filter(o => can("confirmChange", o)),
+        toCancel = items.filter(o => can("cancel", o));
+  const mode = S.styleMode || (toApprove.length ? "approve" : toRecv.length && (S.team === "production" || S.team === "admin") ? "receive" : "");
+  const tot = items.reduce((a,o) => a + (approvedOf(o) || qtyOf(o)), 0), val = items.reduce((a,o) => a + valueOf(o), 0);
+  const p0 = (toApprove[0] || o0).production || {};
+  let acts = sentBackHTML(items);
+  if (send.length) acts += `<div class="panel"><b>Planning</b><div class="acts"><button class="btn primary" data-sact="submit" type="button">Send ${send.length} colour${send.length>1?"s":""} to Production</button>${items.some(o => can("edit", o)) ? `<span class="hint">Edit a colour by clicking its name.</span>` : ""}</div></div>`;
+  if (pend.length) acts += `<div class="panel" style="border-color:var(--bad);background:var(--bad-soft)"><b>${pend.length} change${pend.length>1?"s":""} from Planning to confirm</b>${pend.map(o => `<div>${esc(o.color)}: ${o.pendingChange.kind==="cancel"?"cancel":esc(diffText(o.pendingChange.from, o.pendingChange.sizes))}${o.pendingChange.note?` — “${esc(o.pendingChange.note)}”`:""}</div>`).join("")}<div class="acts"><button class="btn primary" data-sact="confirmAll" type="button">Confirm all</button><button class="btn" data-sact="rejectAll" type="button">Can't do it</button></div><div class="hint">“Can't do it” needs a reason in the comment box.</div></div>`;
+  if (toApprove.length) acts += `<div class="panel"><b>Approve &amp; schedule ${toApprove.length} colour${toApprove.length>1?"s":""}</b><div class="grid2">
+      <label>Factory<input class="inp" id="spFactory" list="dlFactories" value="${esc(p0.factory||o0.factory||"")}"></label>
+      <label>Expected receiving<input class="inp" type="date" id="spDate" value="${esc(p0.expectedDate||o0.neededBy||"")}"></label>
+      <label>Fabric<select class="sel" id="spFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}">${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
+      <label>Fabric arrival<input class="inp" type="date" id="spFabricDate"></label></div>
+      <div class="hint">Approves exactly the quantities Planning sent (no changes). If something can't be made, write the reason in the comment box and press <b>Send back to Planning</b>.</div>
+      <div class="acts"><button class="btn primary" data-sact="approve" type="button">Approve all</button><button class="btn" data-sact="sendBack" type="button">Send back to Planning</button></div></div>`;
+  if (toStart.length) acts += `<div class="panel"><b>Production</b><div class="acts"><button class="btn primary" data-sact="start" type="button">Mark ${toStart.length} colour${toStart.length>1?"s":""} started</button></div></div>`;
+  if (toRecv.length && mode === "receive") acts += `<div class="panel"><b>Receiving</b><div class="grid2"><label>Received on<input class="inp" type="date" id="srDate" value="${todayISO()}"></label></div><div class="hint">Type the pieces that arrived per colour and size in the table (grey number = still to come), or import a whole sheet.</div><div class="acts"><button class="btn primary" data-sact="receive" type="button">Record delivery</button><button class="btn" data-go="recv" type="button">Import receiving (Excel)</button></div></div>`;
+  if (toChange.length) acts += mode === "change"
+    ? `<div class="panel"><b>Change quantities</b><div class="hint">Type the new quantities in the table. Production sees the change at once and confirms it.</div><label>Reason<textarea class="inp" id="sChNote" placeholder="e.g. sales dropped, reduce M and L"></textarea></label><div class="acts"><button class="btn primary" data-sact="sendChange" type="button">Send to Production</button><button class="btn" data-smode="" type="button">Cancel</button></div></div>`
+    : `<div class="panel"><b>Change this style</b><div class="acts"><button class="btn" data-smode="change" type="button">Increase / decrease qty</button><button class="btn danger" data-sact="askCancelAll" type="button">Ask to cancel ${toChange.length} colour${toChange.length>1?"s":""}</button></div></div>`;
+  if (toRecv.length && mode !== "receive" && mode !== "change" && (S.team === "production" || S.team === "admin")) acts += `<div class="acts"><button class="btn" data-smode="receive" type="button">Record a delivery</button></div>`;
+  if (toCancel.length) acts += `<div class="acts"><button class="btn sm danger" data-sact="cancelAll" type="button">Cancel ${toCancel.length} colour${toCancel.length>1?"s":""} (not sent yet)</button></div>`;
+  if (!S.team && !S.readOnly) acts = `<div class="ro">Pick your team at the top right to see the actions for your team.</div>`;
+  if (S.readOnly) acts = `<div class="ro">You can view this style. Ask the owner for Contributor access to act on it.</div>`;
+  const feed = items.flatMap(o => feedFor(o.id).map(f => Object.assign({color:o.color}, f))).sort((a,b) => (a.at||0)-(b.at||0)).slice(-40);
+  L.innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-label="${esc(o0.style)}" style="width:min(860px,100%)">
+    <div class="d-h"><div class="x"><div style="min-width:0"><div class="eyebrow">${esc(cycleLabel(o0.cycle))} · ${items.length} colour${items.length>1?"s":""}</div><h2>${esc(o0.style)}</h2></div><button class="btn ghost" data-close type="button" aria-label="Close">✕</button></div>
+      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip plain">${fmt(tot)} pcs</span>${val?`<span class="chip plain">${fmt(Math.round(val))} EGP at cost</span>`:""}<span class="chip plain">${esc(o0.code||"")}</span><span class="chip plain">${esc(o0.fabric||"")}</span><span class="chip plain">${esc(factoryOf(o0))}</span>${STAGES.filter(s => by([s.id]).length).map(s => `<span class="chip ${s.tone} st">${by([s.id]).length} ${esc(s.name)}</span>`).join("")}</div></div>
+    <div class="d-b">
+      <div class="sec"><h4>Colours &amp; sizes${mode==="approve"?" — approve":mode==="receive"?" — receive now":mode==="change"?" — new quantities":""}</h4>${matrixHTML(items, mode)}<div class="hint" style="margin-top:6px">Click a colour to open it on its own (photos, single-colour edits, its history).</div></div>
+      ${acts}
+      <div class="sec"><h4>Comments &amp; history (all colours)</h4><div class="feed">${feed.length ? feed.map(f => `<div class="msg ${f.kind==="event"?"event":""}"><img src="${esc(avOf(f.by))}" alt=""><div><div class="h"><b>${esc(nameOf(f.by))}</b><span>${esc(f.color)}</span><span>${esc(fmtDT(f.at))}</span></div><div class="body">${f.kind==="event"?"• ":""}${esc(f.text)}</div></div></div>`).join("") : `<div class="hint">Nothing yet.</div>`}</div></div>
+      ${can("comment") ? `<div class="compose"><textarea class="inp" id="sText" placeholder="Comment on the whole style (saved on every colour)"></textarea><div style="display:flex;justify-content:flex-end"><button class="btn primary" data-sact="comment" type="button">Post comment</button></div></div>` : ""}
+    </div></aside>`;
+  for (const id in keep) { const el = document.getElementById(id); if (el) el.value = keep[id]; }
+}
+function readMatrix(attr){
+  const out = {};
+  document.querySelectorAll(`[data-${attr}]`).forEach(el => { const id = el.dataset[attr]; (out[id] = out[id] || {})[el.dataset.size] = Math.max(0, Math.round(Number(el.value)||0)); });
+  return out;
+}
+async function onStyleAct(act){
+  const items = styleItems(S.openStyle); if (!items.length) return;
+  const note = ($("#sText") && $("#sText").value.trim()) || "";
+  const withNote = t => note ? t + " — " + note : t;
+  const done = () => { const c = $("#sText"); if (c) c.value = ""; S.styleMode = ""; };
+  const run = async (list, fn, msg) => { let n = 0; if (list.length > 3) toast(`Working on ${list.length} colours…`); const ok = await write(() => pmap(list, async o => { await fn(o); n++; }), null); toast(`${msg}: ${n} colour${n===1?"":"s"}` + (ok ? "" : " (stopped on an error)")); if (ok) done(); return ok; };
+  if (act === "comment") { if (!note) { toast("Write a comment first."); return; } await run(items, o => S.db.collection("feed").add({orderId:o.id, kind:"comment", text:note.slice(0,4000), by:S.me.id, team:S.team, at:Date.now()}), "Comment posted"); return; }
+  if (act === "submit") await run(items.filter(o => can("submit", o) && qtyOf(o) > 0), o => setStatus(o, "production", {}, withNote("Sent to Production (whole style)")), "Sent to Production");
+  else if (act === "approve") {
+    const factory = ($("#spFactory").value||"").trim().toUpperCase(), date = $("#spDate").value, fabric = $("#spFabric").value, fabricDate = $("#spFabricDate").value;
+    if (!factory || !date) { toast("Enter the factory and the expected receiving date."); return; }
+    await run(items.filter(o => can("prodReview", o)), o => { const sizes = Object.assign({}, o.sizes); const d = sumObj(sizes) - qtyOf(o);
+      return setStatus(o, "approved", {production:{factory, expectedDate:date, sizes, fabric, fabricDate, by:S.me.id, at:Date.now()}}, withNote(`Production approved ${fmt(sumObj(sizes))} pcs at ${factory}, receiving ${fmtDate(date)}${d ? ` (${d>0?"+":""}${fmt(d)} vs request)` : ""}`)); }, "Approved");
+  }
+  else if (act === "sendBack") { if (!note) { toast("Write the reason in the comment box first."); return; } await run(items.filter(o => can("prodReview", o)), o => setStatus(o, "changes", {}, "Production sent it back — " + note), "Sent back"); }
+  else if (act === "start") await run(items.filter(o => can("start", o)), o => setStatus(o, "inprod", {production:Object.assign({}, o.production, {startedAt:Date.now()})}, withNote("Production started")), "Started");
+  else if (act === "receive") {
+    const m = readMatrix("src"), date = $("#srDate").value || todayISO();
+    const list = items.filter(o => can("receive", o) && m[o.id] && sumObj(m[o.id]) > 0);
+    if (!list.length) { toast("Type the received pieces in the table first."); return; }
+    await run(list, o => applyReceipt(o, m[o.id], date, withNote("")), "Delivery recorded");
+  }
+  else if (act === "sendChange") {
+    const m = readMatrix("sch"), why = ($("#sChNote").value||"").trim().slice(0,1000);
+    const list = items.filter(o => can("change", o) && m[o.id] && diffText(targetSizes(o), m[o.id]) !== "0 pcs");
+    if (!list.length) { toast("No quantity changed."); return; }
+    const bad = list.find(o => receivedOf(o) && sumObj(m[o.id]) < receivedOf(o)); if (bad) { toast(`${bad.color}: new total is below what is already received.`); return; }
+    await run(list, async o => { const cur = Object.assign({}, targetSizes(o));
+      await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"qty", from:cur, sizes:m[o.id], note:why, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
+      await logEvent(o.id, `Quantity change requested: ${diffText(cur, m[o.id])}${why?" — "+why:""}`); }, "Sent to Production");
+  }
+  else if (act === "askCancelAll") {
+    if (!note) { toast("Write why in the comment box first."); $("#sText") && $("#sText").focus(); return; }
+    confirmBox(`Ask Production to cancel ${items.filter(o => can("change", o)).length} colours?`, "They apply after Production confirms.", "Send", () => run(items.filter(o => can("change", o)), async o => {
+      await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
+      await logEvent(o.id, "Cancellation requested — " + note); }, "Sent to Production"));
+  }
+  else if (act === "confirmAll") await run(items.filter(o => can("confirmChange", o)), o => confirmChange(o, withNote("Production confirmed")), "Confirmed");
+  else if (act === "rejectAll") { if (!note) { toast("Write the reason in the comment box first."); return; } await run(items.filter(o => can("confirmChange", o)), async o => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Production could not apply the change — " + note); }, "Declined"); }
+  else if (act === "cancelAll") confirmBox("Cancel the colours not yet sent?", "They stay in the history as cancelled.", "Cancel them", () => run(items.filter(o => can("cancel", o)), o => setStatus(o, "cancelled", {prevStatus:o.status}, withNote("Request cancelled (whole style)")), "Cancelled"));
+}
+async function applyReceipt(o, now, date, suffix){
+  const prev = (o.receiving && o.receiving.sizes) || {}; const tot = {...prev}; for (const k in now) tot[k] = (Number(tot[k])||0) + (Number(now[k])||0);
+  const n = sumObj(now), target = approvedOf(o) || qtyOf(o), all = sumObj(tot);
+  const status = all >= target ? "received" : "partial";
+  const deliveries = ((o.receiving && o.receiving.deliveries) || []).concat([{date, qty:n, by:S.me.id}]).slice(-50);
+  await setStatus(o, status, {receiving:{sizes:tot, lastDate:date, deliveries}}, `Received ${fmt(n)} pcs on ${fmtDate(date)} (${fmt(all)}/${fmt(target)})${suffix||""}`);
+}
+async function confirmChange(o, text){
+  const pc = o.pendingChange; if (!pc) return;
+  if (pc.kind === "cancel") return setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, text + " the cancellation");
+  const extra = {pendingChange:null, sizes:pc.sizes, qty:sumObj(pc.sizes)};
+  if (o.production && o.production.sizes) extra.production = {sizes:pc.sizes};
+  let status = o.status;
+  if (["inprod","partial","approved"].includes(o.status) && receivedOf(o) > 0) status = receivedOf(o) >= sumObj(pc.sizes) ? "received" : "partial";
+  return setStatus(o, status, extra, `${text} the change: ${diffText(pc.from, pc.sizes)}`);
+}
+
+/* ---------- receiving import ---------- */
+function openRecvImport(){
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="rcvModal"><div class="box" role="dialog" aria-label="Import receiving">
+    <div class="mh"><h2>Import receiving</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb">
+      <div class="hint">Choose the Excel/CSV of what arrived, or paste it. Each row needs a quantity and either a <b>SKU</b>, or <b>Title + COLOR + SIZE</b>. Quantity columns read: Received Qty, Actual Received Qty, Qty, Quantity. Easiest: Export → “One row per size (SKU)”, fill the empty <b>Received Qty</b> column, and import the same file here. A Date column is used if present.</div>
+      <div class="notice"><b>Easiest way:</b> 1) <button class="btn sm" type="button" data-go="recvTpl">Download template</button> (all open SKUs of this view with what is still to come) 2) fill the <b>Received Qty</b> column 3) choose the file below.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="file" id="rcvFile" accept=".xlsx,.xls,.csv,.tsv,.txt"><label class="hint" style="display:flex;gap:6px;align-items:center">Received on<input class="inp" type="date" id="rcvDate" value="${todayISO()}"></label></div>
+      <textarea class="inp" id="rcvText" style="min-height:120px;font-family:var(--f-mono);font-size:12px" placeholder="SKU&#9;Received Qty"></textarea>
+      <div id="rcvPrev"></div>
+    </div>
+    <div class="mf"><button class="btn" data-mclose type="button">Cancel</button><button class="btn" id="rcvCheck" type="button">Preview</button><button class="btn primary" id="rcvGo" type="button" disabled>Record deliveries</button></div></div></div>`);
+  let plan = null;
+  const preview = () => {
+    plan = null; $("#rcvGo").disabled = true;
+    const rows = parseDelimited($("#rcvText").value.replace(/^﻿/,""));
+    if (rows.length < 2) { $("#rcvPrev").innerHTML = `<div class="notice bad">Paste the table with its header row.</div>`; return; }
+    const head = rows[0].map(h => h.trim().toLowerCase()); const f = (...n) => head.findIndex(h => n.some(x => h === x || h.replace(/[^a-z]/g,"") === x.replace(/[^a-z]/g,"")));
+    const iSku = f("sku","variant sku","barcode"), iT = f("title","style","style name","product"), iC = f("color","colour"), iS = f("size"),
+          iQ = ["received qty","actual received qty","receive qty","received now","qty","quantity","received"].map(n => f(n)).find(i => i >= 0) ?? -1, iD = f("date","received date","receiving date");
+    if (iQ < 0) { $("#rcvPrev").innerHTML = `<div class="notice bad">I need a quantity column (Received Qty / Qty).</div>`; return; }
+    if (iSku < 0 && (iT < 0 || iC < 0)) { $("#rcvPrev").innerHTML = `<div class="notice bad">I need a SKU column, or Title and COLOR (and SIZE).</div>`; return; }
+    const open = S.orders.filter(o => ["approved","inprod","partial"].includes(o.status) && (S.cycle === "all" || o.cycle === S.cycle));
+    const bySku = {}; open.forEach(o => Object.entries(o.skus||{}).forEach(([sz, sku]) => bySku[String(sku).toUpperCase()] = [o, sz]));
+    const byKey = {}; open.forEach(o => byKey[norm(o.style) + "|" + norm(o.color)] = o);
+    const per = {}, miss = []; let tot = 0;
+    rows.slice(1).forEach(r => {
+      const q = Math.round(Number(String(r[iQ]).replace(/[, ]/g,""))||0); if (q <= 0) return;
+      let o = null, sz = "";
+      const sku = iSku >= 0 ? String(r[iSku]||"").trim().toUpperCase() : "";
+      if (sku && bySku[sku]) [o, sz] = bySku[sku];
+      else if (iT >= 0 && iC >= 0) { o = byKey[norm(r[iT]) + "|" + norm(r[iC])]; sz = (iS >= 0 ? String(r[iS]||"") : sku.split("-").pop()).trim().toUpperCase(); }
+      else if (sku) { const parts = sku.split("-"), last = parts.pop(), pre = parts.join("-");
+        o = open.find(x => Object.values(x.skus||{}).some(v => String(v).toUpperCase().split("-").slice(0,-1).join("-") === pre)) || null;
+        if (!o) { const cands = open.filter(x => x.code === parts.slice(0,4).join("-")); if (cands.length === 1) o = cands[0]; }
+        if (o) sz = last; }
+      if (!o || !sz) { miss.push([sku || `${r[iT]||""} ${r[iC]||""} ${iS>=0?r[iS]:""}`, q]); return; }
+      const p = per[o.id] = per[o.id] || {o, sizes:{}, date: iD >= 0 && r[iD] ? String(r[iD]).slice(0,10) : ""};
+      p.sizes[sz] = (p.sizes[sz]||0) + q; tot += q;
+    });
+    plan = Object.values(per);
+    $("#rcvGo").disabled = !plan.length;
+    $("#rcvPrev").innerHTML = `<div class="hint" style="margin-bottom:6px">${fmt(tot)} pcs matched to ${plan.length} open colour${plan.length===1?"":"s"}${miss.length?` · <b style="color:var(--bad)">${miss.length} row${miss.length>1?"s":""} not matched</b>`:""}.</div>
+      <div class="tbl-wrap" style="max-height:260px;overflow:auto"><table><thead><tr><th>Ref</th><th>Style</th><th>Colour</th><th>Received now</th><th class="n">Pcs</th><th class="n">After</th></tr></thead><tbody>${plan.map(p => { const t = approvedOf(p.o) || qtyOf(p.o), after = receivedOf(p.o) + sumObj(p.sizes); return `<tr><td class="mono">${esc(p.o.ref)}</td><td>${esc(p.o.style)}</td><td>${esc(p.o.color)}</td><td class="mono">${esc(sortSizes(Object.keys(p.sizes)).map(k => k+":"+p.sizes[k]).join("  "))}</td><td class="n num">${fmt(sumObj(p.sizes))}</td><td class="n num" style="color:${after>t?"var(--warn)":"inherit"}">${fmt(after)}/${fmt(t)}</td></tr>`; }).join("")}
+      ${miss.map(([k,q]) => `<tr><td colspan="4" style="color:var(--bad)">Not matched: ${esc(k)} — check it is approved/in production in this batch</td><td class="n num">${fmt(q)}</td><td></td></tr>`).join("")}</tbody></table></div>`;
+  };
+  $("#rcvFile").onchange = async e => { const t = await readSheetFile(e.target.files[0]); if (t != null) { $("#rcvText").value = t; preview(); } };
+  $("#rcvCheck").onclick = preview;
+  $("#rcvGo").onclick = async () => {
+    if (!plan) return; $("#rcvGo").disabled = true; const dflt = $("#rcvDate").value || todayISO(); let n = 0;
+    const ok = await write(() => pmap(plan, async p => { const fresh = S.orders.find(x => x.id === p.o.id) || p.o; await applyReceipt(fresh, p.sizes, /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : dflt, " (imported)"); n++; }), null);
+    toast(`${n} colour${n===1?"":"s"} updated` + (ok ? "" : " before an error")); if (n) $("#rcvModal")?.remove();
+  };
+}
+async function readSheetFile(f){
+  if (!f) return null;
+  if (/\.xlsx?$/i.test(f.name)) {
+    if (!window.XLSX) { toast("Excel reader is still loading; try again in a second."); return null; }
+    const wb = XLSX.read(await f.arrayBuffer(), {type:"array"}); return XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], {FS:"\t", blankrows:false});
+  }
+  return await f.text();
+}
+
+/* ---------- export (any stage, any layout) ---------- */
+function openExport(){
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="expModal"><div class="box" role="dialog" aria-label="Export" style="width:min(560px,100%)">
+    <div class="mh"><h2>Export</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb">
+      <div class="hint">Exports what the current filters show: ${esc(cycleLabel(S.cycle))}${S.fFactory?" · "+esc(S.fFactory):""}${S.fPrio?" · "+esc(prioName(S.fPrio)):""}${S.q?" · “"+esc(S.q)+"”":""}. Pick the stages:</div>
+      <div class="presets" id="expStages">${STAGES.map(s => `<label class="chip ${s.tone} st" style="height:26px;cursor:pointer"><input type="checkbox" value="${s.id}" ${["cancelled"].includes(s.id)?"":"checked"}> ${esc(s.name)} (${visibleOrders(true).filter(o => o.status === s.id).length})</label>`).join("")}</div>
+      <div class="grid2">
+        <label class="hint">Layout<select class="sel" id="expLayout"><option value="size">One row per size (SKU)</option><option value="colour">One row per colour</option><option value="style">One row per style</option></select></label>
+        <label class="hint">File<select class="sel" id="expFmt"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV</option></select></label>
+      </div></div>
+    <div class="mf"><button class="btn" data-mclose type="button">Cancel</button><button class="btn primary" id="expGo" type="button">Export</button></div></div></div>`);
+  $("#expGo").onclick = async () => {
+    const stages = [...document.querySelectorAll("#expStages input:checked")].map(i => i.value);
+    const list = visibleOrders(true).filter(o => stages.includes(o.status));
+    if (!list.length) { toast("Nothing in the stages you picked."); return; }
+    const layout = $("#expLayout").value, fmtF = $("#expFmt").value;
+    const P = o => o.production || {};
+    const rows = [];
+    if (layout === "size") {
+      rows.push(["Ref","Batch","Status","Factory","Style","Style code","Colour","Fabric","Size","SKU","Requested","Approved","Received so far","Still to come","Received Qty","Unit cost","Value (cost)","Price","Category","Season","Priority","Needed by","Expected receiving","Fabric status","Fabric arrival","Change pending"]);
+      list.forEach(o => { const p = P(o); const keys = sortSizes([...new Set([...Object.keys(o.sizes||{}), ...Object.keys(p.sizes||{})])]);
+        keys.forEach(k => { const req = (o.sizes||{})[k]||0, ap = (p.sizes||{})[k], rc = ((o.receiving||{}).sizes||{})[k]||0, base = ap ?? req;
+          rows.push([o.ref, cycleLabel(o.cycle), (ST[o.status]||{}).name, factoryOf(o), o.style, o.code, o.color, o.fabric, k, (o.skus||{})[k]||"", req, ap ?? "", rc || "", Math.max(0, base - rc), "", Number(o.unitCost)||"", o.unitCost ? Math.round(o.unitCost*base) : "", o.price||"", o.category||"", o.season||"", prioName(o.priority), o.neededBy, p.expectedDate||"", p.fabric||"", p.fabricDate||"", o.pendingChange ? (o.pendingChange.kind === "cancel" ? "Cancel" : diffText(o.pendingChange.from, o.pendingChange.sizes)) : ""]); }); });
+    } else if (layout === "colour") {
+      const allKeys = sortSizes([...new Set(list.flatMap(o => Object.keys(targetSizes(o))))]);
+      rows.push(["Ref","Batch","Status","Factory","Style","Style code","Colour","Fabric", ...allKeys, "Total","Received","Unit cost","Value (cost)","Priority","Needed by","Expected receiving","Fabric status"]);
+      list.forEach(o => { const t = targetSizes(o), p = P(o); rows.push([o.ref, cycleLabel(o.cycle), (ST[o.status]||{}).name, factoryOf(o), o.style, o.code, o.color, o.fabric, ...allKeys.map(k => t[k]||""), sumObj(t), receivedOf(o)||"", Number(o.unitCost)||"", o.unitCost ? Math.round(o.unitCost*sumObj(t)) : "", prioName(o.priority), o.neededBy, p.expectedDate||"", p.fabric||""]); });
+    } else {
+      rows.push(["Batch","Style","Style code","Fabric","Factory","Colours","Statuses","Total pcs","Received","Value (cost)","Earliest expected","Latest expected"]);
+      styleGroups(list).forEach(([, items]) => { const o = items[0]; const ds = items.map(x => P(x).expectedDate).filter(Boolean).sort();
+        rows.push([cycleLabel(o.cycle), o.style, o.code, o.fabric, factoryOf(o), items.map(x => x.color).join(", "), [...new Set(items.map(x => (ST[x.status]||{}).name))].join(", "), items.reduce((a,x) => a + sumObj(targetSizes(x)), 0), items.reduce((a,x) => a + receivedOf(x), 0) || "", Math.round(items.reduce((a,x) => a + valueOf(x), 0)) || "", ds[0]||"", ds[ds.length-1]||""]); });
+    }
+    const dl = await window.claude?.use?.("downloads"); if (!dl) { toast("Downloads are not available here."); return; }
+    const name = `Restock_${slug(cycleLabel(S.cycle))}${S.fFactory?"_"+slug(S.fFactory):""}_${layout}`;
+    let data, filename;
+    if (fmtF === "xlsx" && window.XLSX) { const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(rows); ws["!cols"] = rows[0].map(h => ({wch: Math.max(10, String(h).length + 2)})); XLSX.utils.book_append_sheet(wb, ws, "Restock"); data = new Uint8Array(XLSX.write(wb, {type:"array", bookType:"xlsx"})); filename = name + ".xlsx"; }
+    else { data = "﻿" + rows.map(r => r.map(v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; }).join(",")).join("\r\n"); filename = name + ".csv"; }
+    try { await dl.save({filename, data}); toast("File saved"); $("#expModal")?.remove(); } catch(e){ if (!(e && e.code === "declined")) toast("The file was not saved."); }
+  };
+}
+
+/* ---------- events ---------- */
+function closeDrawer(){ S.openId = null; S.openStyle = null; S.styleMode = ""; $("#layer").innerHTML = ""; }
+document.addEventListener("click", e => {
+  const os_ = e.target.closest("[data-open-style]"); if (os_) { S.openStyle = os_.dataset.openStyle; S.openId = null; S.styleMode = ""; renderStyleDrawer(); resolveNames(); return; }
+  const op = e.target.closest("[data-open]"); if (op) { S.openId = op.dataset.open; S.openStyle = null; renderDrawer(); resolveNames(); return; }
+  const sa = e.target.closest("[data-sact]"); if (sa) { onStyleAct(sa.dataset.sact); return; }
+  const sm = e.target.closest("[data-smode]"); if (sm) { S.styleMode = sm.dataset.smode; renderStyleDrawer(); return; }
+  if (e.target.closest("[data-close]")) { closeDrawer(); return; }
+  if (e.target.closest("[data-mclose]")) { e.target.closest(".modal").remove(); return; }
+  const a = e.target.closest("[data-act]"); if (a) { onAct(a.dataset.act); return; }
+  const fx = e.target.closest("[data-fx]"); if (fx) { const k = fx.dataset.fx; if (k === "__all") S.F = {}; else if (fx.dataset.fv !== undefined) { S.F[k] = (S.F[k]||[]).filter(v => v !== fx.dataset.fv); if (!S.F[k].length) delete S.F[k]; } else delete S.F[k]; saveF(); render(); return; }
+  const go = e.target.closest("[data-go]"); if (go) { const g = go.dataset.go; if (g === "recv") $("#btnRecv").click(); else if (g === "recvTpl") downloadRecvTemplate(); else if (g === "startAll") onBulk("start"); return; }
+  const bk = e.target.closest("[data-bulk]"); if (bk) { onBulk(bk.dataset.bulk); return; }
+  const im = e.target.closest("[data-img]"); if (im) { S.imgSel = Number(im.dataset.img)||0; renderDrawer(); return; }
+  const t = e.target.closest(".tabs button"); if (t) { S.view = t.dataset.view; try { localStorage.setItem("rh.view", S.view); } catch(_){} render(); }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") { const ms = document.querySelectorAll(".modal"); if (ms.length) ms[ms.length-1].remove(); else if (S.openId || S.openStyle) closeDrawer(); } });
+document.addEventListener("dragover", e => { const z = e.target.closest && e.target.closest("#dropZone"); if (z) { e.preventDefault(); z.classList.add("over"); } });
+document.addEventListener("dragleave", e => { const z = e.target.closest && e.target.closest("#dropZone"); if (z) z.classList.remove("over"); });
+document.addEventListener("drop", e => { const z = e.target.closest && e.target.closest("#dropZone"); if (z) { e.preventDefault(); z.classList.remove("over"); if (e.dataTransfer && e.dataTransfer.files.length) addPhotos(e.dataTransfer.files); } });
+document.addEventListener("paste", e => {
+  if (!S.openId || !S.assets || document.querySelector(".modal")) return;
+  const files = [...(e.clipboardData ? e.clipboardData.files : [])].filter(f => f.type.startsWith("image/"));
+  if (files.length) { e.preventDefault(); addPhotos(files); }
+});
+document.addEventListener("change", async e => {
+  const el = e.target;
+  if (el.id === "imgFile" && el.files && el.files.length) { addPhotos(el.files); el.value = ""; return; }
+  if (el.dataset && el.dataset.cap) {
+    const v = Math.max(0, Math.round(Number(el.value)||0)), name = el.dataset.cap;
+    await write(() => S.db.doc("factories/" + slug(name)).set({name, capacity:v, updatedAt:Date.now(), updatedBy:S.me.id}), "Capacity saved");
+  }
+});
+$("#cycleSel").onchange = e => {
+  if (e.target.value === "__new") { e.target.value = S.cycle; openBatchForm(null); return; }
+  S.cycle = e.target.value; S.fFactory = ""; try { localStorage.setItem("rh.batch", S.cycle); } catch(_){} render(); };
+$("#btnEditBatch").onclick = () => { if (S.batches[S.cycle]) openBatchForm(S.cycle, () => render()); };
+function bindBatchSelect(sel, onPick){
+  const el = $(sel); let last = el.value;
+  el.addEventListener("change", () => {
+    if (el.value === "__new") { el.value = last; openBatchForm(null, id => { el.innerHTML = batchOptions(id, false, true); el.value = id; last = id; onPick && onPick(id); renderCycleSel(); }); return; }
+    last = el.value; onPick && onPick(el.value);
+  });
+}
+$("#q").oninput = e => { S.q = e.target.value; render(); };
+$("#fFactory").onchange = e => { S.fFactory = e.target.value; render(); };
+$("#fPrio").onchange = e => { S.fPrio = e.target.value; render(); };
+$("#fClosed").onchange = e => { S.fClosed = e.target.checked; render(); };
+$("#btnMine").onclick = () => { S.mine = !S.mine; render(); };
+$("#btnNew").onclick = () => openForm(null);
+$("#btnImport").onclick = openImport;
+$("#btnExport").onclick = openExport;
+$("#btnRecv").onclick = () => { if (!(S.team === "production" || S.team === "admin")) { toast("Receiving is done by Production — choose Production (or All teams) at the top right."); $("#teamSel").focus(); return; } openRecvImport(); };
+$("#btnGuide").onclick = openGuide;
+try { if (!localStorage.getItem("rh.guide")) { localStorage.setItem("rh.guide", "1"); setTimeout(openGuide, 600); } } catch(_) {}
+$("#btnPL").onclick = openProductList;
+$("#btnRoles").onclick = openRoles;
+$("#btnFilters").onclick = openFilters;
+$("#teamSel").onchange = async e => {
+  if (!S.isOwner) { e.target.value = S.team || "__none"; return; }
+  S.team = e.target.value; render();
+  if (S.db && S.me.id) { try { await S.db.doc("members/" + S.me.id).set({team:S.team, at:Date.now()}); toast("Team saved: " + (TEAM_NAMES[S.team]||"none")); } catch(_) { toast("Team set for this visit only."); } }
+};
+
+/* ---------- boot ---------- */
+render();
+function fillLists(){
+  const fac = new Set(S.catalog.factories || []); S.orders.forEach(o => { if (o.factory) fac.add(o.factory.toUpperCase()); if (o.production && o.production.factory) fac.add(o.production.factory.toUpperCase()); });
+  $("#dlStyles").innerHTML = Object.keys(S.catalog.styles).sort().map(s => `<option value="${esc(s)}">`).join("");
+  $("#dlFabrics").innerHTML = (S.catalog.fabrics||[]).map(s => `<option value="${esc(s)}">`).join("");
+  $("#dlFactories").innerHTML = [...fac].sort().map(s => `<option value="${esc(s)}">`).join("");
+}
+loadProductList();
+fetch("catalog.json").then(r => r.ok ? r.json() : null).then(j => { if (j) { S.catalog = j; fillLists(); } }).catch(() => {});
+fetch("thumbs.json").then(r => r.ok ? r.json() : null).then(j => loadThumbs(j)).catch(() => {});
+const setStatusNote = (html, bad) => { const s = $("#status"); if (!html) { s.hidden = true; return; } s.hidden = false; s.className = "notice" + (bad ? " bad" : ""); s.innerHTML = html; };
+(async () => {
+  const claude = window.claude;
+  if (!claude || !claude.use) { setStatusNote("Open this page in Claude to use the shared restock list.", true); return; }
+  const [db, user, dl, assets] = await Promise.all([claude.use("db"), claude.use("user"), claude.use("downloads"), claude.use("assets")]);
+  S.user = user; S.assets = assets; if (dl) $("#btnExport").hidden = false;
+  if (user) {
+    try { const me = await user.me(); S.me = {id:me.id, name:me.name, avatarUrl:me.avatarUrl}; S.isOwner = me.isOwner; $("#meAv").src = me.avatarUrl; } catch(_){}
+    if (!S.isOwner) { const ao = $('#teamSel option[value="admin"]'); if (ao) ao.remove(); if (S.team === "admin") { S.team = ""; $("#teamSel").value = ""; } }
+    try { S.canWrite = await user.can("data.write"); if (S.canWrite === false) S.readOnly = true; } catch(_){}
+  }
+  if (!db) { setStatusNote("Sign in to Claude to see and edit the shared restock list.", true); return; }
+  S.db = db;
+  const timer = setTimeout(() => { if (!S.loaded.orders) setStatusNote("The shared list is taking long to load. It will appear as soon as the connection answers.", true); }, 10000);
+  const fail = e => { clearTimeout(timer); setStatusNote(e && e.code === "permission-denied" ? "You don't have access yet. Ask the owner to give you a team in “Team access”, then reload." : "The shared list stopped updating (" + esc((e && e.code) || "error") + "). Reload the page to reconnect.", true); };
+  db.collection("orders").onSnapshot(snap => {
+    S.orders = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+    const sig = S.orders.length + "|" + S.orders.map(o => o.factory || "").join(","); if (sig !== fillLists._sig) { fillLists._sig = sig; fillLists(); }
+    if (!snap.metadata.fromCache) { S.loaded.orders = true; clearTimeout(timer); setStatusNote(S.readOnly ? "You have view-only access. Ask the owner to share it with you as Contributor to take part." : (!S.team ? "Pick your team at the top right: Planning & Merch, Production, or Fashion (view & comment). The actions you see depend on it." : "")); }
+    render();
+  }, fail);
+  db.collection("feed").onSnapshot(snap => { S.feed = snap.docs.map(d => Object.assign({id:d.id}, d.data())); indexFeed(); render(); }, () => {});
+  db.collection("batches").onSnapshot(snap => { S.batches = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if (!snap.metadata.fromCache) S.loaded.batches = true; render(); }, () => {});
+  db.doc("settings/productList").onSnapshot(d => { if (d && d.exists) onProductListDoc(d.data()); }, () => {});
+  db.collection("factories").onSnapshot(snap => { S.factories = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if (S.view === "factories") render(); }, () => {});
+  if (S.me.id) {
+    db.doc("members/" + S.me.id).onSnapshot(d => {
+      if (!d.exists) { db.doc("members/" + S.me.id).set({at:Date.now()}).catch(() => {}); return; }
+      if (!S.isOwner) return;
+      const t = d.data().team || "";
+      if (t && t !== S.team) { S.team = t; $("#teamSel").value = t; render(); }
+      else if (!t && !S.team) { S.team = "admin"; $("#teamSel").value = "admin"; render(); }
+      if (!S.readOnly) setStatusNote("");
+    }, () => {});
+    if (S.isOwner) {
+      $("#btnRoles").hidden = false;
+      db.collection("members").onSnapshot(snap => { S.members = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if ($("#rolesModal")) drawRoles(); }, () => {});
+      db.collection("roles").onSnapshot(snap => { S.roles = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if ($("#rolesModal")) drawRoles(); }, () => {});
+    } else {
+      const sel = $("#teamSel"); sel.disabled = true; sel.title = "Your team is set by the page owner";
+      db.doc("roles/" + S.me.id).onSnapshot(d => {
+        const t = d.exists ? (d.data().team || "") : "";
+        S.team = ["planning","production","fashion"].includes(t) ? t : "";
+        let none = sel.querySelector('option[value="__none"]'); if (!none) { sel.insertAdjacentHTML("afterbegin", `<option value="__none"></option>`); none = sel.querySelector('option[value="__none"]'); }
+        none.textContent = t === "viewer" ? "View only" : "No team yet (view only)";
+        sel.value = S.team || "__none";
+        setStatusNote(S.team || t === "viewer" ? "" : "You can view everything. The page owner assigns your team (Planning, Production or Fashion) — ask them to add you in “Team access”.");
+        render();
+      }, () => {});
+    }
+  }
+})();
+})();
+</script>
+
+</body></html>

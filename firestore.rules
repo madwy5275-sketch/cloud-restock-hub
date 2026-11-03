@@ -1,0 +1,49 @@
+rules_version = '2';
+// CLOUD Restock Hub — who can do what.
+// Admins (by Google email) can do everything. Everyone else needs a team set by an admin in "Team access".
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.email != null
+      && request.auth.token.email.lower() in ['amr96578@gmail.com', 'mohamed.adawy@garments-group.com']; }
+    function roleDoc() { return get(/databases/$(database)/documents/roles/$(request.auth.uid)); }
+    function team() { return exists(/databases/$(database)/documents/roles/$(request.auth.uid)) ? roleDoc().data.team : ''; }
+    function isTeam(t) { return isAdmin() || (signedIn() && team() == t); }
+    function member() { return isAdmin() || (signedIn() && team() in ['planning', 'production', 'fashion', 'viewer']); }
+    function planning() { return isTeam('planning'); }
+    function production() { return isTeam('production'); }
+
+    // Production may move a request through its steps, but never change what Planning asked for.
+    function productionUpdateOk() {
+      let k = request.resource.data.diff(resource.data).affectedKeys();
+      let locked = ['style', 'color', 'code', 'fabric', 'factory', 'priority', 'neededBy', 'cycle', 'unitCost', 'skus', 'ref',
+                    'category', 'price', 'season', 'gender', 'reason', 'createdBy', 'createdAt', 'images'];
+      return !k.hasAny(locked)
+        // sizes/qty only change when Production confirms Planning's own change request
+        && (!k.hasAny(['sizes', 'qty']) || (resource.data.pendingChange != null && request.resource.data.sizes == resource.data.pendingChange.sizes))
+        // the quantities Production schedules must equal the requested sizes
+        && (!k.hasAny(['production']) || !('sizes' in request.resource.data.production) || request.resource.data.production.sizes == request.resource.data.sizes)
+        // Production cannot invent change requests
+        && (!k.hasAny(['pendingChange']) || request.resource.data.pendingChange == null);
+    }
+
+    match /users/{uid} { allow read: if member() || (signedIn() && request.auth.uid == uid); allow write: if signedIn() && request.auth.uid == uid; }
+    match /members/{uid} { allow read: if isAdmin() || (signedIn() && request.auth.uid == uid); allow write: if signedIn() && request.auth.uid == uid; }
+    match /roles/{uid} { allow read: if isAdmin() || (signedIn() && request.auth.uid == uid); allow write: if isAdmin(); }
+
+    match /orders/{id} {
+      allow read: if member();
+      allow create, delete: if planning();
+      allow update: if planning() || (production() && productionUpdateOk());
+    }
+    match /feed/{id} {
+      allow read: if member();
+      allow create: if (planning() || production() || isTeam('fashion')) && request.resource.data.by == request.auth.uid;
+      allow update, delete: if planning();
+    }
+    match /batches/{id}   { allow read: if member(); allow write: if planning(); }
+    match /factories/{id} { allow read: if member(); allow write: if planning() || production(); }
+    match /settings/{id}  { allow read: if member(); allow write: if planning(); }
+    match /images/{id}    { allow read: if member(); allow create: if planning() || production(); allow update, delete: if planning(); }
+  }
+}

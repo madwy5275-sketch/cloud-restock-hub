@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=5"></script>
-<script src="rh-boot.js?v=5"></script>
-<script type="module" src="firebase-shim.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="rh-boot.js?v=6"></script>
+<script type="module" src="firebase-shim.js?v=6"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -712,6 +712,7 @@ function openChangeForm(o){
     if (diffText(cur, sizes) === "0 pcs") { toast("No quantity changed."); return; }
     if (receivedOf(o) && sumObj(sizes) < receivedOf(o)) { toast("The new total is below what is already received."); return; }
     const note = $("#chNote").value.trim().slice(0,1000);
+    if (S.team === "admin") { if (await write(() => confirmChange(o, "Admin applied" + (note ? " (" + note + ")" : ""), {kind:"qty", from:Object.assign({}, cur), sizes}), "Change applied")) $("#chgModal")?.remove(); return; }
     if (await write(async () => {
       await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"qty", from:Object.assign({}, cur), sizes, note, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
       await logEvent(o.id, `Quantity change requested: ${diffText(cur, sizes)}${note?" — "+note:""}`);
@@ -829,6 +830,7 @@ async function onAct(act){
   else if (act === "changeQty") openChangeForm(o);
   else if (act === "askCancel") {
     if (!note) { toast("Write why it should be cancelled in the comment box first."); $("#cText") && $("#cText").focus(); return; }
+    if (S.team === "admin") { if (await write(() => setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, "Cancelled by admin — " + note), "Cancelled")) clearNote(); return; }
     if (await write(async () => { await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Cancellation requested — " + note); }, "Sent to Production for confirmation")) clearNote();
   }
   else if (act === "withdraw") { if (await write(async () => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote("Change request withdrawn")); }, "Change withdrawn")) clearNote(); }
@@ -1544,8 +1546,8 @@ function matrixHTML(items, mode){
     const st = ST[o.status] || ST.draft; const req = o.sizes||{}, ap = (o.production||{}).sizes, rc = (o.receiving||{}).sizes||{};
     const base = ap && sumObj(ap) ? ap : req;
     let cells, tot;
-    if (mode === "receive" && ["approved","inprod","partial"].includes(o.status)) { cells = keys.map(k => { const left = Math.max(0, (Number(base[k])||0) - (Number(rc[k])||0)); return `<td><input type="number" min="0" id="src-${esc(o.id)}-${esc(k)}" data-src="${esc(o.id)}" data-size="${esc(k)}" value="0" placeholder="${left}" title="${left} still to come"></td>`; }); tot = Math.max(0, sumObj(base) - sumObj(rc)); }
-    else if (mode === "change" && can("change", o)) { cells = keys.map(k => `<td><input type="number" min="0" id="sch-${esc(o.id)}-${esc(k)}" data-sch="${esc(o.id)}" data-size="${esc(k)}" value="${Number(base[k])||0}"></td>`); tot = sumObj(base); }
+    if (mode === "receive" && ["approved","inprod","partial"].includes(o.status)) { cells = keys.map(k => { const left = Math.max(0, (Number(base[k])||0) - (Number(rc[k])||0)); const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td><input type="number" min="0" id="src-${esc(o.id)}-${esc(k)}" data-src="${esc(o.id)}" data-size="${esc(k)}" value="" placeholder="0" title="${fmt(left)} still to come"><div class="hint" style="font-size:10.5px;white-space:nowrap;margin-top:2px">${fmt(v)} ord${r ? ` · <b style="color:var(--ok)">${fmt(r)} in</b>` : ""}${left && r ? ` · ${fmt(left)} left` : ""}</div></td>`; }); tot = Math.max(0, sumObj(base) - sumObj(rc)); }
+    else if (mode === "change" && can("change", o)) { cells = keys.map(k => `<td><input type="number" min="0" id="sch-${esc(o.id)}-${esc(k)}" data-sch="${esc(o.id)}" data-size="${esc(k)}" value="${Number(base[k])||0}"><div class="hint" style="font-size:10.5px;margin-top:2px">now ${fmt(Number(base[k])||0)}</div></td>`); tot = sumObj(base); }
     else { cells = keys.map(k => { const v = Number(base[k])||0, r = Number(rc[k])||0; return `<td class="num">${v ? fmt(v) : "—"}${r ? `<br><span class="hint">${fmt(r)} in</span>` : ""}</td>`; }); tot = sumObj(base); }
     return `<tr><th><button type="button" data-open="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;border:0;background:transparent;padding:0;font-weight:600;text-align:left"><img class="thumb" style="width:24px;height:31px;border-radius:4px" src="${esc(imgFor(o))}" alt="">${esc(o.color)}</button></th><td><span class="chip ${st.tone} st">${esc(st.name)}</span>${o.pendingChange?` <span class="chip bad">change</span>`:""}</td>${cells.join("")}<td class="num"><b>${fmt(tot)}</b></td></tr>`;
   }).join("");
@@ -1575,8 +1577,8 @@ function renderStyleDrawer(){
   if (toStart.length) acts += `<div class="panel"><b>Production</b><div class="acts"><button class="btn primary" data-sact="start" type="button">Mark ${toStart.length} colour${toStart.length>1?"s":""} started</button></div></div>`;
   if (toRecv.length && mode === "receive") acts += `<div class="panel"><b>Receiving</b><div class="grid2"><label>Received on<input class="inp" type="date" id="srDate" value="${todayISO()}"></label></div><div class="hint">Type the pieces that arrived per colour and size in the table (grey number = still to come), or import a whole sheet.</div><div class="acts"><button class="btn primary" data-sact="receive" type="button">Record delivery</button><button class="btn" data-go="recv" type="button">Import receiving (Excel)</button></div></div>`;
   if (toChange.length) acts += mode === "change"
-    ? `<div class="panel"><b>Change quantities</b><div class="hint">Type the new quantities in the table. Production sees the change at once and confirms it.</div><label>Reason<textarea class="inp" id="sChNote" placeholder="e.g. sales dropped, reduce M and L"></textarea></label><div class="acts"><button class="btn primary" data-sact="sendChange" type="button">Send to Production</button><button class="btn" data-smode="" type="button">Cancel</button></div></div>`
-    : `<div class="panel"><b>Change this style</b><div class="acts"><button class="btn" data-smode="change" type="button">Increase / decrease qty</button><button class="btn danger" data-sact="askCancelAll" type="button">Ask to cancel ${toChange.length} colour${toChange.length>1?"s":""}</button></div></div>`;
+    ? `<div class="panel"><b>Change quantities</b><div class="hint">Type the new quantities in the table. ${S.team === "admin" ? "As admin the change applies at once." : "Production sees the change at once and confirms it."}</div><label>Reason<textarea class="inp" id="sChNote" placeholder="e.g. sales dropped, reduce M and L"></textarea></label><div class="acts"><button class="btn primary" data-sact="sendChange" type="button">${S.team === "admin" ? "Apply change" : "Send to Production"}</button><button class="btn" data-smode="" type="button">Cancel</button></div></div>`
+    : `<div class="panel"><b>Change this style</b><div class="hint">${S.team === "admin" ? "You are admin: changes and cancellations apply at once." : "Production sees it at once and confirms it."}</div><label>Reason<input class="inp" id="sWhy" placeholder="e.g. sales dropped, merged into next batch"></label><div class="acts"><button class="btn" data-smode="change" type="button">Increase / decrease qty</button><button class="btn danger" data-sact="askCancelAll" type="button">${S.team === "admin" ? "Cancel" : "Ask to cancel"} ${toChange.length} colour${toChange.length>1?"s":""}</button></div></div>`;
   if (toRecv.length && mode !== "receive" && mode !== "change" && (S.team === "production" || S.team === "admin")) acts += `<div class="acts"><button class="btn" data-smode="receive" type="button">Record a delivery</button></div>`;
   if (toCancel.length) acts += `<div class="acts"><button class="btn sm danger" data-sact="cancelAll" type="button">Cancel ${toCancel.length} colour${toCancel.length>1?"s":""} (not sent yet)</button></div>`;
   if (!S.team && !S.readOnly) acts = `<div class="ro">Pick your team at the top right to see the actions for your team.</div>`;
@@ -1618,22 +1620,28 @@ async function onStyleAct(act){
     const m = readMatrix("src"), date = $("#srDate").value || todayISO();
     const list = items.filter(o => can("receive", o) && m[o.id] && sumObj(m[o.id]) > 0);
     if (!list.length) { toast("Type the received pieces in the table first."); return; }
-    await run(list, o => applyReceipt(o, m[o.id], date, withNote("")), "Delivery recorded");
+    const ok = await run(list, o => applyReceipt(o, m[o.id], date, withNote("")), "Delivery recorded");
+    if (ok) { document.querySelectorAll("[data-src]").forEach(i => i.value = ""); S.styleMode = "receive"; renderStyleDrawer(); }
   }
   else if (act === "sendChange") {
     const m = readMatrix("sch"), why = ($("#sChNote").value||"").trim().slice(0,1000);
     const list = items.filter(o => can("change", o) && m[o.id] && diffText(targetSizes(o), m[o.id]) !== "0 pcs");
     if (!list.length) { toast("No quantity changed."); return; }
     const bad = list.find(o => receivedOf(o) && sumObj(m[o.id]) < receivedOf(o)); if (bad) { toast(`${bad.color}: new total is below what is already received.`); return; }
+    if (S.team === "admin") { await run(list, o => confirmChange(o, "Admin applied" + (why ? " (" + why + ")" : ""), {kind:"qty", from:Object.assign({}, targetSizes(o)), sizes:m[o.id]}), "Changed"); return; }
     await run(list, async o => { const cur = Object.assign({}, targetSizes(o));
       await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"qty", from:cur, sizes:m[o.id], note:why, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
       await logEvent(o.id, `Quantity change requested: ${diffText(cur, m[o.id])}${why?" — "+why:""}`); }, "Sent to Production");
   }
   else if (act === "askCancelAll") {
-    if (!note) { toast("Write why in the comment box first."); $("#sText") && $("#sText").focus(); return; }
-    confirmBox(`Ask Production to cancel ${items.filter(o => can("change", o)).length} colours?`, "They apply after Production confirms.", "Send", () => run(items.filter(o => can("change", o)), async o => {
-      await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
-      await logEvent(o.id, "Cancellation requested — " + note); }, "Sent to Production"));
+    const why = (($("#sWhy") && $("#sWhy").value.trim()) || note).slice(0, 1000);
+    if (!why) { toast("Write the reason first."); $("#sWhy") && $("#sWhy").focus(); return; }
+    const list = items.filter(o => can("change", o));
+    if (S.team === "admin") { confirmBox(`Cancel ${list.length} colour${list.length===1?"":"s"} now?`, "They move to cancelled at once and stay in the history.", "Cancel them", () => run(list, o => setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, "Cancelled by admin — " + why), "Cancelled")); return; }
+    const note2 = why;
+    confirmBox(`Ask Production to cancel ${list.length} colours?`, "They apply after Production confirms.", "Send", () => run(list, async o => {
+      await S.db.doc("orders/" + o.id).update({pendingChange:{kind:"cancel", from:Object.assign({}, targetSizes(o)), sizes:{}, note:note2, by:S.me.id, at:Date.now()}, updatedAt:Date.now(), updatedBy:S.me.id});
+      await logEvent(o.id, "Cancellation requested — " + note2); }, "Sent to Production"));
   }
   else if (act === "confirmAll") await run(items.filter(o => can("confirmChange", o)), o => confirmChange(o, withNote("Production confirmed")), "Confirmed");
   else if (act === "rejectAll") { if (!note) { toast("Write the reason in the comment box first."); return; } await run(items.filter(o => can("confirmChange", o)), async o => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Production could not apply the change — " + note); }, "Declined"); }
@@ -1646,8 +1654,8 @@ async function applyReceipt(o, now, date, suffix){
   const deliveries = ((o.receiving && o.receiving.deliveries) || []).concat([{date, qty:n, by:S.me.id}]).slice(-50);
   await setStatus(o, status, {receiving:{sizes:tot, lastDate:date, deliveries}}, `Received ${fmt(n)} pcs on ${fmtDate(date)} (${fmt(all)}/${fmt(target)})${suffix||""}`);
 }
-async function confirmChange(o, text){
-  const pc = o.pendingChange; if (!pc) return;
+async function confirmChange(o, text, pcIn){
+  const pc = pcIn || o.pendingChange; if (!pc) return;
   if (pc.kind === "cancel") return setStatus(o, "cancelled", {pendingChange:null, prevStatus:o.status}, text + " the cancellation");
   const extra = {pendingChange:null, sizes:pc.sizes, qty:sumObj(pc.sizes)};
   if (o.production && o.production.sizes) extra.production = {sizes:pc.sizes};

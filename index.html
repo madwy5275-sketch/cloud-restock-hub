@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=10"></script>
-<script src="rh-boot.js?v=10"></script>
-<script type="module" src="firebase-shim.js?v=10"></script>
+<script src="config.js?v=12"></script>
+<script src="rh-boot.js?v=12"></script>
+<script type="module" src="firebase-shim.js?v=12"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -104,6 +104,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 .sb{display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;font-size:10.5px;font-weight:700;white-space:nowrap}
 .sb.short{background:var(--bad-soft);color:var(--bad)}.sb.over{background:var(--warn-soft);color:var(--warn)}.sb.ok{background:var(--ok-soft);color:var(--ok)}.sb.cx{background:var(--sunk);color:var(--ink-2);text-decoration:line-through;text-decoration-thickness:1px}
 .rs{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px}.rs.compact{font-size:11.5px}
+.facpick{display:flex;gap:6px;align-items:center}.facpick .inp{flex:1;min-width:0}
 .factive{display:flex;gap:6px;flex-wrap:wrap;width:100%;align-items:center}
 .factive .chip{height:24px;cursor:pointer}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
@@ -519,7 +520,7 @@ function renderStrip(){
     ["Waiting Production", fmt(cnt(["production"])), cnt(["production"]) ? "warn" : ""],
     ["In production", fmt(cnt(["approved","inprod","partial"])), ""],
     ["Due in 7 days", fmt(soon), soon ? "warn" : ""], ["Late", fmt(late), late ? "bad" : ""],
-    [`Received · ${fmt(rec)} of ${fmt(os.reduce((a,o) => a + (approvedOf(o) || qtyOf(o)), 0))} pcs`, (os.length ? Math.round(rec / Math.max(1, os.reduce((a,o) => a + (approvedOf(o) || qtyOf(o)), 0)) * 100) : 0) + "%", rec ? "ok" : ""]
+    (() => { const tgt = os.reduce((a,o) => a + (o.closedShort ? receivedOf(o) : (approvedOf(o) || qtyOf(o))), 0); const rin = os.reduce((a,o) => a + Math.min(receivedOf(o), o.closedShort ? receivedOf(o) : (approvedOf(o) || qtyOf(o))), 0); return [`Received · ${fmt(rin)} of ${fmt(tgt)} pcs`, (tgt ? Math.round(rin / tgt * 100) : 0) + "%", rec ? "ok" : ""]; })()
   ];
   const val = os.reduce((a,o) => a + valueOf(o), 0); if (val) k.splice(3, 0, ["Value at cost (EGP)", fmt(Math.round(val)), ""]);
   $("#kpis").innerHTML = k.map(([l,v,c]) => `<div class="kpi ${c}"><span class="v">${v}</span><span class="l">${l}</span></div>`).join("");
@@ -659,12 +660,14 @@ function sizesTable(o, mode){
   else if (ap) body += row("Approved", ap);
   if (mode === "receive") body += row("Received so far", rc || {}) + row("Receive now", {}, "rc");
   else if (rc) body += row("Received", rc);
+  if (rc && sumObj(rc)) { const base = ap && sumObj(ap) ? ap : (o.sizes || {}); const st = recvStats(o);
+    body += `<tr><th>${o.closedShort ? "Short (cancelled) / extra" : "Still to come / extra"}</th>${keys.map(k => `<td class="num">${sizeBadge(Number(base[k])||0, Number(rc[k])||0, true, !!o.closedShort) || "—"}</td>`).join("")}<td class="num">${st.short ? (o.closedShort ? `<span class="sb cx">cxl −${fmt(st.short)}</span>` : `<span class="sb short">−${fmt(st.short)}</span>`) : ""}${st.over ? `<span class="sb over">+${fmt(st.over)}</span>` : ""}${!st.short && !st.over ? `<span class="sb ok">✓</span>` : ""}</td></tr>`; }
   return `<div class="sizes tbl-wrap"><table><thead><tr><th>Size</th>${keys.map(k => `<th>${esc(k)}</th>`).join("")}<th>Total</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function galleryHTML(o){
   const imgs = imagesFor(o); const sel = Math.min(S.imgSel, Math.max(0, imgs.length - 1));
   const big = imgs[sel] || PLACEHOLDER;
-  const upl = S.assets && S.team && !S.readOnly;
+  const upl = S.assets && (S.team === "planning" || S.team === "admin") && !S.readOnly;
   return `<div class="gallery"><img class="big" src="${esc(big)}" alt="${esc(o.style||"")} ${esc(o.color||"")}">
     <div style="display:grid;gap:8px;align-content:start">
       ${imgs.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${imgs.map((u,i) => `<img class="mini ${i===sel?"on":""}" src="${esc(u)}" alt="" data-img="${i}">`).join("")}</div>` : ""}
@@ -734,7 +737,7 @@ function renderDrawer(){
   const o = S.orders.find(x => x.id === S.openId);
   const L = $("#layer");
   if (!o) { L.innerHTML = ""; S.openId = null; return; }
-  const st = ST[o.status] || ST.draft, f = dueFlag(o), p = o.production || {};
+  const st = o.closedShort ? {tone:"warn", name:"Closed short"} : (ST[o.status] || ST.draft), f = dueFlag(o), p = o.production || {};
   const keep = {};
   L.querySelectorAll("input,textarea,select").forEach(el => { if (el.id) keep[el.id] = el.value; });
   let mode = can("prodReview", o) ? "approve" : can("receive", o) ? "receive" : "";
@@ -749,10 +752,10 @@ function renderDrawer(){
       <div class="acts">${can("confirmChange", o) ? `<button class="btn primary" data-act="confirmChange" type="button">Confirm ${pc.kind==="cancel"?"cancellation":"change"}</button><button class="btn" data-act="rejectChange" type="button">Can't do it</button>` : `<span class="hint">Waiting for Production to confirm.</span>`}${can("withdraw", o) ? `<button class="btn" data-act="withdraw" type="button">Withdraw</button>` : ""}</div>
       ${can("confirmChange", o) ? `<div class="hint">“Can't do it” needs a reason in the comment box.</div>` : ""}</div>`;
   }
-  if (can("change", o)) actions += `<div class="panel"><b>Change this order</b><div class="hint">Production already has this request. Quantity changes and cancellations reach them at once and apply after they confirm.</div><div class="acts"><button class="btn" data-act="changeQty" type="button">Increase / decrease qty</button><button class="btn danger" data-act="askCancel" type="button">Ask to cancel</button></div></div>`;
+  if (can("change", o)) actions += `<div class="panel"><b>Change this order</b><div class="hint">${S.team === "admin" ? "You are admin: changes and cancellations apply at once. Write the reason in the comment box below first." : "Production already has this request. Quantity changes and cancellations reach them at once and apply after they confirm. Write the reason in the comment box below first."}${receivedOf(o) ? " Already received pieces stay counted; cancelling closes it short." : ""}</div><div class="acts"><button class="btn" data-act="changeQty" type="button">Increase / decrease qty</button><button class="btn danger" data-act="askCancel" type="button">${S.team === "admin" ? "Cancel" : "Ask to cancel"}</button></div></div>`;
   if (can("fashion", o)) actions += `<div class="panel"><b>Fashion review</b><div class="hint">Approve the style, colour and fabric for re-production, or send it back with a note (write the note below first).</div><div class="acts"><button class="btn primary" data-act="fashionOk" type="button">Approve → Production</button><button class="btn" data-act="fashionNo" type="button">Request changes</button></div></div>`;
   if (can("prodReview", o)) actions += `<div class="panel"><b>Production approval</b><div class="grid2">
-      <label>Factory<input class="inp" id="pFactory" list="dlFactories" value="${esc(p.factory||o.factory||"")}" placeholder="Factory name"></label>
+      <label>Factory<span class="facpick"><input class="inp" id="pFactory" list="dlFactories" value="${esc(p.factory||o.factory||"")}" placeholder="Choose or type a factory"><button class="btn sm" type="button" data-addfac="pFactory" title="Add a new factory">+ Add</button></span></label>
       <label>Expected receiving date<input class="inp" type="date" id="pDate" value="${esc(p.expectedDate||o.neededBy||"")}"></label>
       <label>Fabric<select class="sel" id="pFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}" ${s===(p.fabric||"")?"selected":""}>${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
       <label>Fabric arrival<input class="inp" type="date" id="pFabricDate" value="${esc(p.fabricDate||"")}"></label></div>
@@ -760,7 +763,7 @@ function renderDrawer(){
       <div class="acts"><button class="btn primary" data-act="prodOk" type="button">Approve &amp; schedule</button><button class="btn" data-act="prodNo" type="button">Send back to Planning</button></div></div>`;
   if (can("start", o)) actions += `<div class="panel"><b>Production</b><div class="acts"><button class="btn primary" data-act="start" type="button">Mark production started</button></div></div>`;
   if (can("receive", o)) actions += `<div class="panel"><b>Receiving</b><div class="grid2"><label>Received on<input class="inp" type="date" id="rDate" value="${todayISO()}"></label></div><div class="hint">Enter the pieces that arrived in this delivery in the “Receive now” row above.</div><div class="acts"><button class="btn primary" data-act="receive" type="button">Record delivery</button></div></div>`;
-  if (can("reschedule", o)) actions += `<div class="panel"><b>Update schedule</b><div class="grid2"><label>Expected receiving<input class="inp" type="date" id="nDate" value="${esc(p.expectedDate||"")}"></label>
+  if (can("reschedule", o)) actions += `<div class="panel"><b>Update factory &amp; schedule</b><div class="grid2"><label>Factory<span class="facpick"><input class="inp" id="nFactory" list="dlFactories" value="${esc(p.factory||"")}" placeholder="Choose or type a factory"><button class="btn sm" type="button" data-addfac="nFactory" title="Add a new factory">+ Add</button></span></label><label>Expected receiving<input class="inp" type="date" id="nDate" value="${esc(p.expectedDate||"")}"></label>
       <label>Fabric<select class="sel" id="nFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}" ${s===(p.fabric||"")?"selected":""}>${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
       <label>Fabric arrival<input class="inp" type="date" id="nFabricDate" value="${esc(p.fabricDate||"")}"></label></div><div class="hint">Write the reason in the comment box; it is saved with the change.</div><div class="acts"><button class="btn" data-act="reschedule" type="button">Save schedule</button></div></div>`;
   const side = [];
@@ -881,13 +884,15 @@ async function onAct(act){
   }
   else if (act === "reschedule") {
     const d = $("#nDate").value; if (!d) { toast("Pick the expected date."); return; }
-    const p0 = o.production || {}, old = p0.expectedDate, fab = $("#nFabric").value, fabD = $("#nFabricDate").value;
+    const p0 = o.production || {}, old = p0.expectedDate, fab = $("#nFabric").value, fabD = $("#nFabricDate").value, fac = ($("#nFactory").value || "").trim().toUpperCase();
     const parts = [];
+    if (!fac) { toast("Enter the factory."); return; }
+    if (fac !== (p0.factory || "")) parts.push(`Factory ${p0.factory || "—"} → ${fac}`);
     if (d !== old) parts.push(`Receiving date ${fmtDate(old)} → ${fmtDate(d)}`);
     if (fab !== (p0.fabric||"")) parts.push(fab ? fab : "Fabric status cleared");
     if (fabD !== (p0.fabricDate||"")) parts.push(`Fabric arrival ${fmtDate(fabD)}`);
     if (!parts.length) { toast("Nothing changed."); return; }
-    if (await write(async () => { await S.db.doc("orders/" + o.id).update({production:{expectedDate:d, fabric:fab, fabricDate:fabD}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote(parts.join(" · "))); }, "Schedule saved")) clearNote();
+    if (await write(async () => { await S.db.doc("orders/" + o.id).update({production:{factory:fac, expectedDate:d, fabric:fab, fabricDate:fabD}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote(parts.join(" · "))); }, "Schedule saved")) clearNote();
   }
   else if (act === "removeImg") {
     const imgs = o.images || []; const sel = Math.min(S.imgSel, imgs.length - 1); if (sel < 0 || !imgs[sel]) return;
@@ -1253,14 +1258,14 @@ function openProductList(){
     <div class="mh"><h2>Product list</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
     <div class="mb">
       <div class="notice">Now using <b>${fmt(PL.count)} SKUs</b> (${fmt(PL.withCost)} with a unit cost)${PL.source?` from ${esc(PL.source)}`:""}${PL.updatedAt?` · ${esc(PL.updatedAt)}`:""}. Everything is matched by SKU (or Title + Colour): unit cost, price, category, season, gender, style code and the SKU of each size.</div>
-      ${S.assets && !S.readOnly ? `<div class="hint">Upload a newer product list (Excel/CSV). Columns read: SKU, Title, Color, Size, Unit Cost (or Cost / Cost per item), Price, Category, Season, Gender, Type, Year, Style Code. Only SKU is required.</div>
+      ${S.assets && !S.readOnly && can("create") ? `<div class="hint">Upload a newer product list (Excel/CSV). Columns read: SKU, Title, Color, Size, Unit Cost (or Cost / Cost per item), Price, Category, Season, Gender, Type, Year, Style Code. Only SKU is required.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="file" id="plFile" accept=".xlsx,.xls,.csv,.tsv,.txt"></div>
       <div id="plPrev"></div>` : `<div class="ro">Only people who can edit this page can replace the product list.</div>`}
-      ${S.canWrite !== false && !S.readOnly ? `<div class="panel"><b>Existing requests</b><div class="hint">${missing} request${missing===1?"":"s"} miss a unit cost, SKU or category that the product list has.</div>
+      ${S.canWrite !== false && !S.readOnly && can("create") ? `<div class="panel"><b>Existing requests</b><div class="hint">${missing} request${missing===1?"":"s"} miss a unit cost, SKU or category that the product list has.</div>
         <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="plOver"> Also replace the unit cost on open requests (not received / cancelled) with the product-list cost</label>
         <div class="acts"><button class="btn" id="plApply" type="button">Fill from product list</button></div></div>` : ""}
     </div>
-    <div class="mf"><button class="btn" data-mclose type="button">Close</button>${S.assets && !S.readOnly ? `<button class="btn primary" id="plSave" type="button" disabled>Save product list</button>` : ""}</div></div></div>`);
+    <div class="mf"><button class="btn" data-mclose type="button">Close</button>${S.assets && !S.readOnly && can("create") ? `<button class="btn primary" id="plSave" type="button" disabled>Save product list</button>` : ""}</div></div></div>`);
   let parsed = null;
   const f = $("#plFile");
   if (f) f.onchange = async e => {
@@ -1619,12 +1624,14 @@ function renderStyleDrawer(){
   if (send.length) acts += `<div class="panel"><b>Planning</b><div class="acts"><button class="btn primary" data-sact="submit" type="button">Send ${send.length} colour${send.length>1?"s":""} to Production</button>${items.some(o => can("edit", o)) ? `<span class="hint">Edit a colour by clicking its name.</span>` : ""}</div></div>`;
   if (pend.length) acts += `<div class="panel" style="border-color:var(--bad);background:var(--bad-soft)"><b>${pend.length} change${pend.length>1?"s":""} from Planning to confirm</b>${pend.map(o => `<div>${esc(o.color)}: ${o.pendingChange.kind==="cancel"?"cancel":esc(diffText(o.pendingChange.from, o.pendingChange.sizes))}${o.pendingChange.note?` — “${esc(o.pendingChange.note)}”`:""}</div>`).join("")}<div class="acts"><button class="btn primary" data-sact="confirmAll" type="button">Confirm all</button><button class="btn" data-sact="rejectAll" type="button">Can't do it</button></div><div class="hint">“Can't do it” needs a reason in the comment box.</div></div>`;
   if (toApprove.length) acts += `<div class="panel"><b>Approve &amp; schedule ${toApprove.length} colour${toApprove.length>1?"s":""}</b><div class="grid2">
-      <label>Factory<input class="inp" id="spFactory" list="dlFactories" value="${esc(p0.factory||o0.factory||"")}"></label>
+      <label>Factory<span class="facpick"><input class="inp" id="spFactory" list="dlFactories" value="${esc(p0.factory||o0.factory||"")}" placeholder="Choose or type a factory"><button class="btn sm" type="button" data-addfac="spFactory" title="Add a new factory">+ Add</button></span></label>
       <label>Expected receiving<input class="inp" type="date" id="spDate" value="${esc(p0.expectedDate||o0.neededBy||"")}"></label>
       <label>Fabric<select class="sel" id="spFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}">${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
       <label>Fabric arrival<input class="inp" type="date" id="spFabricDate"></label></div>
       <div class="hint">Approves exactly the quantities Planning sent (no changes). If something can't be made, write the reason in the comment box and press <b>Send back to Planning</b>.</div>
       <div class="acts"><button class="btn primary" data-sact="approve" type="button">Approve all</button><button class="btn" data-sact="sendBack" type="button">Send back to Planning</button></div></div>`;
+  const toResched = items.filter(o => can("reschedule", o));
+  if (toResched.length && mode !== "change") { const r0 = toResched[0].production || {}; acts += `<div class="panel"><b>Factory &amp; receiving date (${toResched.length} colour${toResched.length>1?"s":""})</b><div class="grid2"><label>Factory<span class="facpick"><input class="inp" id="srFactory" list="dlFactories" value="${esc(r0.factory||"")}" placeholder="Choose or type a factory"><button class="btn sm" type="button" data-addfac="srFactory" title="Add a new factory">+ Add</button></span></label><label>Expected receiving<input class="inp" type="date" id="srExp" value="${esc(r0.expectedDate||"")}"></label></div><div class="acts"><button class="btn" data-sact="reschedAll" type="button">Save for all colours</button></div></div>`; }
   if (toStart.length) acts += `<div class="panel"><b>Production</b><div class="acts"><button class="btn primary" data-sact="start" type="button">Mark ${toStart.length} colour${toStart.length>1?"s":""} started</button></div></div>`;
   if (toRecv.length && mode === "receive") acts += `<div class="panel"><b>Receiving</b><div class="grid2"><label>Received on<input class="inp" type="date" id="srDate" value="${todayISO()}"></label></div><div class="hint">Type the pieces that arrived per colour and size in the table (grey number = still to come), or import a whole sheet.</div><div class="acts"><button class="btn primary" data-sact="receive" type="button">Record delivery</button><button class="btn" data-go="recv" type="button">Import receiving (Excel)</button></div></div>`;
   if (toChange.length) acts += mode === "change"
@@ -1666,6 +1673,15 @@ async function onStyleAct(act){
       return setStatus(o, "approved", {production:{factory, expectedDate:date, sizes, fabric, fabricDate, by:S.me.id, at:Date.now()}}, withNote(`Production approved ${fmt(sumObj(sizes))} pcs at ${factory}, receiving ${fmtDate(date)}${d ? ` (${d>0?"+":""}${fmt(d)} vs request)` : ""}`)); }, "Approved");
   }
   else if (act === "sendBack") { if (!note) { toast("Write the reason in the comment box first."); return; } await run(items.filter(o => can("prodReview", o)), o => setStatus(o, "changes", {}, "Production sent it back — " + note), "Sent back"); }
+  else if (act === "reschedAll") {
+    const fac = ($("#srFactory").value || "").trim().toUpperCase(), d = $("#srExp").value;
+    if (!fac || !d) { toast("Enter the factory and the expected receiving date."); return; }
+    const list = items.filter(o => can("reschedule", o) && ((o.production||{}).factory !== fac || (o.production||{}).expectedDate !== d));
+    if (!list.length) { toast("Nothing changed."); return; }
+    await run(list, async o => { const p0 = o.production || {}; const parts = [];
+      if (p0.factory !== fac) parts.push(`Factory ${p0.factory || "—"} → ${fac}`); if (p0.expectedDate !== d) parts.push(`Receiving date ${fmtDate(p0.expectedDate)} → ${fmtDate(d)}`);
+      await S.db.doc("orders/" + o.id).update({production:{factory:fac, expectedDate:d}, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote(parts.join(" · "))); }, "Saved");
+  }
   else if (act === "start") await run(items.filter(o => can("start", o)), o => setStatus(o, "inprod", {production:Object.assign({}, o.production, {startedAt:Date.now()})}, withNote("Production started")), "Started");
   else if (act === "receive") {
     const m = readMatrix("src"), date = $("#srDate").value || todayISO();
@@ -1825,6 +1841,26 @@ function openExport(){
   };
 }
 
+/* ---------- add factory ---------- */
+function openAddFactory(targetId){
+  $("#modals").insertAdjacentHTML("beforeend", `<div class="modal" id="facModal"><div class="box" role="dialog" aria-label="Add factory" style="width:min(420px,100%)">
+    <div class="mh"><h2>Add factory</h2><button class="btn ghost" data-mclose type="button" aria-label="Close">✕</button></div>
+    <div class="mb"><label class="hint">Factory name<input class="inp" id="facName" placeholder="e.g. HESNI 2"></label>
+      <label class="hint">Monthly capacity (pcs, optional)<input class="inp" type="number" min="0" id="facCap" placeholder="e.g. 3000"></label>
+      <div class="hint">It is added to the factory list for everyone and picked here.</div></div>
+    <div class="mf"><button class="btn" data-mclose type="button">Cancel</button><button class="btn primary" id="facSave" type="button">Add factory</button></div></div></div>`);
+  setTimeout(() => $("#facName")?.focus(), 30);
+  $("#facSave").onclick = async () => {
+    const name = ($("#facName").value || "").trim().toUpperCase().slice(0, 60); if (!name) { toast("Write the factory name."); return; }
+    const cap = Math.max(0, Math.round(Number($("#facCap").value) || 0));
+    const ok = await write(() => S.db.doc("factories/" + slug(name)).set({name, capacity: cap || Number((S.factories[slug(name)] || {}).capacity) || 0, updatedAt:Date.now(), updatedBy:S.me.id}), "Factory added: " + name);
+    if (!ok) return;
+    S.factories = Object.assign({}, S.factories, {[slug(name)]: {name}}); fillLists();
+    const t = document.getElementById(targetId); if (t) { t.value = name; t.dispatchEvent(new Event("input", {bubbles:true})); }
+    $("#facModal")?.remove();
+  };
+  $("#facName").addEventListener("keydown", e => { if (e.key === "Enter") $("#facSave").click(); });
+}
 /* ---------- events ---------- */
 function closeDrawer(){ S.openId = null; S.openStyle = null; S.styleMode = ""; $("#layer").innerHTML = ""; }
 document.addEventListener("click", e => {
@@ -1836,6 +1872,7 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-mclose]")) { e.target.closest(".modal").remove(); return; }
   const a = e.target.closest("[data-act]"); if (a) { onAct(a.dataset.act); return; }
   const fx = e.target.closest("[data-fx]"); if (fx) { const k = fx.dataset.fx; if (k === "__all") S.F = {}; else if (fx.dataset.fv !== undefined) { S.F[k] = (S.F[k]||[]).filter(v => v !== fx.dataset.fv); if (!S.F[k].length) delete S.F[k]; } else delete S.F[k]; saveF(); render(); return; }
+  const af = e.target.closest("[data-addfac]"); if (af) { openAddFactory(af.dataset.addfac); return; }
   const go = e.target.closest("[data-go]"); if (go) { const g = go.dataset.go; if (g === "recv") $("#btnRecv").click(); else if (g === "recvTpl") downloadRecvTemplate(); else if (g === "startAll") onBulk("start"); return; }
   const bk = e.target.closest("[data-bulk]"); if (bk) { onBulk(bk.dataset.bulk); return; }
   const im = e.target.closest("[data-img]"); if (im) { S.imgSel = Number(im.dataset.img)||0; renderDrawer(); return; }
@@ -1859,7 +1896,7 @@ document.addEventListener("change", async e => {
   }
 });
 $("#cycleSel").onchange = e => {
-  if (e.target.value === "__new") { e.target.value = S.cycle; openBatchForm(null); return; }
+  if (e.target.value === "__new") { e.target.value = S.cycle; if (!can("create")) { toast("Only Planning (or admin) can create a batch."); return; } openBatchForm(null); return; }
   S.cycle = e.target.value; S.fFactory = ""; try { localStorage.setItem("rh.batch", S.cycle); } catch(_){} render(); };
 $("#btnEditBatch").onclick = () => { if (S.batches[S.cycle]) openBatchForm(S.cycle, () => render()); };
 function bindBatchSelect(sel, onPick){
@@ -1892,7 +1929,7 @@ $("#teamSel").onchange = async e => {
 /* ---------- boot ---------- */
 render();
 function fillLists(){
-  const fac = new Set(S.catalog.factories || []); S.orders.forEach(o => { if (o.factory) fac.add(o.factory.toUpperCase()); if (o.production && o.production.factory) fac.add(o.production.factory.toUpperCase()); });
+  const fac = new Set(S.catalog.factories || []); Object.values(S.factories || {}).forEach(f => f && f.name && fac.add(String(f.name).toUpperCase())); S.orders.forEach(o => { if (o.factory) fac.add(o.factory.toUpperCase()); if (o.production && o.production.factory) fac.add(o.production.factory.toUpperCase()); });
   $("#dlStyles").innerHTML = Object.keys(S.catalog.styles).sort().map(s => `<option value="${esc(s)}">`).join("");
   $("#dlFabrics").innerHTML = (S.catalog.fabrics||[]).map(s => `<option value="${esc(s)}">`).join("");
   $("#dlFactories").innerHTML = [...fac].sort().map(s => `<option value="${esc(s)}">`).join("");
@@ -1924,7 +1961,7 @@ const setStatusNote = (html, bad) => { const s = $("#status"); if (!html) { s.hi
   db.collection("feed").onSnapshot(snap => { S.feed = snap.docs.map(d => Object.assign({id:d.id}, d.data())); indexFeed(); render(); }, () => {});
   db.collection("batches").onSnapshot(snap => { S.batches = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if (!snap.metadata.fromCache) S.loaded.batches = true; render(); }, () => {});
   db.doc("settings/productList").onSnapshot(d => { if (d && d.exists) onProductListDoc(d.data()); }, () => {});
-  db.collection("factories").onSnapshot(snap => { S.factories = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); if (S.view === "factories") render(); }, () => {});
+  db.collection("factories").onSnapshot(snap => { S.factories = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); fillLists(); if (S.view === "factories") render(); }, () => {});
   if (S.me.id) {
     db.doc("members/" + S.me.id).onSnapshot(d => {
       if (!d.exists) { db.doc("members/" + S.me.id).set({at:Date.now()}).catch(() => {}); return; }

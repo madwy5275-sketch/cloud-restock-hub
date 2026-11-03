@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=16"></script>
-<script src="rh-boot.js?v=16"></script>
-<script type="module" src="firebase-shim.js?v=16"></script>
+<script src="config.js?v=17"></script>
+<script src="rh-boot.js?v=17"></script>
+<script type="module" src="firebase-shim.js?v=17"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -214,6 +214,13 @@ textarea.inp{height:auto;min-height:64px;padding:8px 10px;resize:vertical;width:
 .hint{font-size:12px;color:var(--ink-3)}
 
 /* modal */
+.alerts{margin:10px 0 4px;border:1px solid var(--warn);background:var(--warn-soft);border-radius:12px;padding:10px 12px;display:grid;gap:8px}
+.alerts .alt{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.alerts .alh{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-2,#555);margin:2px 0 4px}
+.alrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin-bottom:4px;cursor:pointer;font:inherit;color:inherit}
+.alrow:hover{border-color:var(--ink-3,#999)}
+.alrow .alwhy{flex:1 1 220px;min-width:0}
+.alrow .alopen{margin-left:auto;font-weight:600;white-space:nowrap}
 .modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:rgba(10,20,17,.35)}
 .modal .box{background:var(--surface);border-radius:14px;width:min(820px,100%);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);min-width:0;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow);border:1px solid var(--line)}
 .modal .mh{flex:0 0 auto;padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
@@ -255,6 +262,7 @@ textarea.inp{height:auto;min-height:64px;padding:8px 10px;resize:vertical;width:
     <div class="cycle-title"><div class="eyebrow" id="cycleEyebrow">Batch</div><h2 id="cycleName">All batches</h2><button id="btnEditBatch" class="btn sm" type="button" hidden style="margin-top:6px">Edit batch</button></div>
     <div class="dates" id="cycleDates"></div>
   </div>
+  <div id="alerts"></div>
   <div class="kpis" id="kpis"></div>
   <div id="status" class="notice">Connecting to the shared restock list…</div>
 </section>
@@ -609,9 +617,36 @@ function emptyBlock(){
 const slug = s => String(s||"unassigned").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,80) || "unassigned";
 
 let _rq = 0; window.__rhRender = () => render();
+function needWhy(sel){ const el = $(sel); toast("Write the reason first — Planning will see it."); if (el) { el.style.outline = "2px solid var(--bad)"; el.focus(); setTimeout(() => { el.style.outline = ""; }, 2500); } }
+let _seenAlert = null;
+function alertItems(){
+  const t = S.team; if (!t || S.readOnly) return [];
+  const out = [];
+  const group = (list, kind, label, tone) => { const m = new Map(); for (const o of list) { const k = styleKey(o); if (!m.has(k)) m.set(k, []); m.get(k).push(o); } for (const [k, os] of m) out.push({kind, label, tone, key:k, os}); };
+  if (t === "planning" || t === "admin") group(S.orders.filter(o => o.status === "changes"), "back", "Production sent back", "warn");
+  if (t === "production" || t === "admin") { group(S.orders.filter(o => o.status === "production" && !o.pendingChange), "new", "New from Planning", "info"); group(S.orders.filter(o => o.pendingChange), "chg", "Change to confirm", "bad"); }
+  return out;
+}
+function renderAlerts(){
+  const box = $("#alerts"); if (!box) return;
+  const al = alertItems(), back = al.filter(a => a.kind === "back"), chg = al.filter(a => a.kind === "chg"), nw = al.filter(a => a.kind === "new");
+  const n = al.reduce((a, x) => a + x.os.length, 0);
+  document.title = (n ? `(${n}) ` : "") + "CLOUD Restock Hub";
+  const ids = new Set(al.flatMap(a => a.os.map(o => a.kind + o.id + (o.updatedAt||0))));
+  if (_seenAlert) { const fresh = al.filter(a => a.os.some(o => !_seenAlert.has(a.kind + o.id + (o.updatedAt||0)))); if (fresh.length) { const f = fresh[0], txt = `${f.label}: ${f.os[0].style}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ""}`; toast("🔔 " + txt); try { if (window.Notification && Notification.permission === "granted" && document.hidden) new Notification("CLOUD Restock Hub", {body: txt}); } catch (_) {} } }
+  _seenAlert = ids;
+  if (!al.length) { box.innerHTML = ""; return; }
+  const row = a => { const sb = a.kind === "back" ? sentBack(a.os[0]) : null, pc = a.kind === "chg" ? a.os[0].pendingChange : null;
+    const why = sb && sb.text ? `“${esc(sb.text)}”${sb.at ? ` <span class="hint">· ${esc(nameOf(sb.by))}, ${esc(fmtDT(sb.at))}</span>` : ""}` : pc ? `${pc.kind === "cancel" ? "cancel" : esc(diffText(pc.from, pc.sizes))}${pc.note ? ` — “${esc(pc.note)}”` : ""}` : `${fmt(a.os.reduce((x, o) => x + qtyOf(o), 0))} pcs`;
+    return `<button type="button" class="alrow" data-open-style="${esc(a.key)}"><span class="chip ${a.tone} st">${esc(a.label)}</span><b>${esc(a.os[0].style)}</b><span class="hint">${a.os.length} colour${a.os.length>1?"s":""}</span><span class="alwhy">${why}</span><span class="alopen">Open →</span></button>`; };
+  const sect = (list, title) => list.length ? `<div class="alsec"><div class="alh">${title}</div>${list.slice(0, 6).map(row).join("")}${list.length > 6 ? `<div class="hint">+${list.length - 6} more — use “Waiting for my team”.</div>` : ""}</div>` : "";
+  const perm = window.Notification && Notification.permission === "default" ? `<button type="button" class="btn sm" id="btnNotif">🔔 Also alert me on this computer</button>` : "";
+  box.innerHTML = `<div class="alerts"><div class="alt"><b>🔔 ${n} need${n===1?"s":""} your action</b>${perm}</div>${sect(back, "↩ Sent back to Planning — fix and send again")}${sect(chg, "Changes from Planning to confirm")}${sect(nw, "New requests to approve")}</div>`;
+  const bn = $("#btnNotif"); if (bn) bn.onclick = async () => { try { await Notification.requestPermission(); } catch (_) {} renderAlerts(); };
+}
 function render(){ if (_rq) return; _rq = requestAnimationFrame(() => { _rq = 0; renderNow(); }); setTimeout(() => { if (_rq) { cancelAnimationFrame(_rq); _rq = 0; renderNow(); } }, 120); }
 function renderNow(){
-  renderCycleSel(); renderStrip();
+  renderCycleSel(); renderStrip(); try { renderAlerts(); } catch (e) { console.warn(e); }
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === S.view)));
   $("#btnNew").hidden = !can("create");
   $("#btnImport").hidden = !can("create");
@@ -760,6 +795,7 @@ function renderDrawer(){
       <label>Fabric<select class="sel" id="pFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}" ${s===(p.fabric||"")?"selected":""}>${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
       <label>Fabric arrival<input class="inp" type="date" id="pFabricDate" value="${esc(p.fabricDate||"")}"></label></div>
       <div class="hint">Production approves exactly what Planning requested — sizes and quantities can't be changed here. If the factory can't make it, press <b>Send back to Planning</b> with the reason (e.g. “factory can make only 200 of M”); Planning edits and sends it again.</div>
+      <label>Reason if sending back (Planning sees it)<input class="inp" id="pNoWhy" placeholder="e.g. factory can make only 200 of M"></label>
       <div class="acts"><button class="btn primary" data-act="prodOk" type="button">Approve &amp; schedule</button><button class="btn" data-act="prodNo" type="button">Send back to Planning</button></div></div>`;
   if (can("start", o)) actions += `<div class="panel"><b>Production</b><div class="acts"><button class="btn primary" data-act="start" type="button">Mark production started</button></div></div>`;
   if (can("receive", o)) actions += `<div class="panel"><b>Receiving</b><div class="grid2"><label>Received on<input class="inp" type="date" id="rDate" value="${todayISO()}"></label></div><div class="hint">Enter the pieces that arrived in this delivery in the “Receive now” row above.</div><div class="acts"><button class="btn primary" data-act="receive" type="button">Record delivery</button></div></div>`;
@@ -873,7 +909,7 @@ async function onAct(act){
     if (await write(() => setStatus(o, "approved", {production:{factory, expectedDate:date, sizes, fabric, fabricDate, by:S.me.id, at:Date.now()}},
       withNote(`Production approved ${fmt(t)} pcs at ${factory}, receiving ${fmtDate(date)}${diff ? ` (${diff>0?"+":""}${fmt(diff)} vs request)` : ""}`)), "Approved and scheduled")) clearNote();
   }
-  else if (act === "prodNo") { if (!note) { toast("Write the reason in the comment box first."); return; } if (await write(() => setStatus(o, "changes", {}, "Production sent it back — " + note), "Sent back to Planning")) clearNote(); }
+  else if (act === "prodNo") { const why = (($("#pNoWhy") && $("#pNoWhy").value.trim()) || note).slice(0, 1000); if (!why) { needWhy("#pNoWhy"); return; } if (await write(() => setStatus(o, "changes", {sentBack:{text:why, by:S.me.id, at:Date.now()}}, "Production sent it back — " + why), "Sent back to Planning — they see it at the top of their page")) clearNote(); }
   else if (act === "start") { if (await write(() => setStatus(o, "inprod", {"production":Object.assign({}, o.production, {startedAt:Date.now()})}, withNote("Production started")), "Marked in production")) clearNote(); }
   else if (act === "receive") {
     const now = readSizes("rc"), n = sumObj(now); if (!n) { toast("Enter the received pieces per size."); return; }
@@ -1311,6 +1347,7 @@ async function onProductListDoc(d){
 /* ---------- sent-back reason ---------- */
 function sentBack(o){
   if (o.status !== "changes") return null;
+  if (o.sentBack && o.sentBack.text) return o.sentBack;
   const ev = feedFor(o.id).filter(f => f.kind === "event" && /sent it back/i.test(f.text || "")).pop();
   return {text: ev ? String(ev.text).replace(/^Production sent it back\s*—\s*/i, "") : "", by: ev && ev.by, at: ev && ev.at};
 }
@@ -1644,7 +1681,8 @@ function renderStyleDrawer(){
       <label>Expected receiving<input class="inp" type="date" id="spDate" value="${esc(p0.expectedDate||o0.neededBy||"")}"></label>
       <label>Fabric<select class="sel" id="spFabric">${FABRIC_STATES.map(s => `<option value="${esc(s)}">${esc(s||"— fabric status —")}</option>`).join("")}</select></label>
       <label>Fabric arrival<input class="inp" type="date" id="spFabricDate"></label></div>
-      <div class="hint">Approves exactly the quantities Planning sent (no changes). If something can't be made, write the reason in the comment box and press <b>Send back to Planning</b>.</div>
+      <div class="hint">Approves exactly the quantities Planning sent (no changes). If something can't be made, write the reason below and press <b>Send back to Planning</b>.</div>
+      <label>Reason if sending back (Planning sees it)<input class="inp" id="spNoWhy" placeholder="e.g. factory can make only 200 of M"></label>
       <div class="acts"><button class="btn primary" data-sact="approve" type="button">Approve all</button><button class="btn" data-sact="sendBack" type="button">Send back to Planning</button></div></div>`;
   const toResched = items.filter(o => can("reschedule", o));
   if (toResched.length && mode !== "change") { const r0 = toResched[0].production || {}; acts += `<div class="panel"><b>Factory &amp; receiving date (${toResched.length} colour${toResched.length>1?"s":""})</b><div class="grid2"><label>Factory<span class="facpick"><input class="inp" id="srFactory" list="dlFactories" value="${esc(r0.factory||"")}" placeholder="Choose or type a factory"><button class="btn sm" type="button" data-addfac="srFactory" title="Add a new factory">+ Add</button></span></label><label>Expected receiving<input class="inp" type="date" id="srExp" value="${esc(r0.expectedDate||"")}"></label></div><div class="acts"><button class="btn" data-sact="reschedAll" type="button">Save for all colours</button></div></div>`; }
@@ -1690,7 +1728,7 @@ async function onStyleAct(act){
     await run(items.filter(o => can("prodReview", o)), o => { const sizes = Object.assign({}, o.sizes); const d = sumObj(sizes) - qtyOf(o);
       return setStatus(o, "approved", {production:{factory, expectedDate:date, sizes, fabric, fabricDate, by:S.me.id, at:Date.now()}}, withNote(`Production approved ${fmt(sumObj(sizes))} pcs at ${factory}, receiving ${fmtDate(date)}${d ? ` (${d>0?"+":""}${fmt(d)} vs request)` : ""}`)); }, "Approved");
   }
-  else if (act === "sendBack") { if (!note) { toast("Write the reason in the comment box first."); return; } await run(items.filter(o => can("prodReview", o)), o => setStatus(o, "changes", {}, "Production sent it back — " + note), "Sent back"); }
+  else if (act === "sendBack") { const why = (($("#spNoWhy") && $("#spNoWhy").value.trim()) || note).slice(0, 1000); if (!why) { needWhy("#spNoWhy"); return; } await run(items.filter(o => can("prodReview", o)), o => setStatus(o, "changes", {sentBack:{text:why, by:S.me.id, at:Date.now()}}, "Production sent it back — " + why), "Sent back to Planning"); }
   else if (act === "reschedAll") {
     const fac = ($("#srFactory").value || "").trim().toUpperCase(), d = $("#srExp").value;
     if (!fac || !d) { toast("Enter the factory and the expected receiving date."); return; }

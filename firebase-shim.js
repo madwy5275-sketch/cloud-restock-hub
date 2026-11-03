@@ -56,7 +56,7 @@ function colRef(path){
     path,
     doc: id => docRef(path + "/" + (id || doc(c).id)),
     add: async d => { const r = await addDoc(c, d); return docRef(path + "/" + r.id); },
-    onSnapshot: (cb, err) => onSnapshot(c, s => cb({ docs: s.docs.map(wrapDoc), size: s.size, empty: s.empty, metadata: { fromCache: s.metadata.fromCache, hasPendingWrites: s.metadata.hasPendingWrites } }), e => err && err(e))
+    onSnapshot: (cb, err) => onSnapshot(c, { includeMetadataChanges: true }, s => cb({ docs: s.docs.map(wrapDoc), size: s.size, empty: s.empty, metadata: { fromCache: s.metadata.fromCache, hasPendingWrites: s.metadata.hasPendingWrites } }), e => err && err(e))
   };
 }
 const db = { doc: docRef, collection: colRef, batch: () => writeBatch(fs) };

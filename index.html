@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=15"></script>
-<script src="rh-boot.js?v=15"></script>
-<script type="module" src="firebase-shim.js?v=15"></script>
+<script src="config.js?v=16"></script>
+<script src="rh-boot.js?v=16"></script>
+<script type="module" src="firebase-shim.js?v=16"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1636,6 +1636,8 @@ function renderStyleDrawer(){
   const p0 = (toApprove[0] || o0).production || {};
   let acts = sentBackHTML(items);
   if (send.length) acts += `<div class="panel"><b>Planning</b><div class="acts"><button class="btn primary" data-sact="submit" type="button">Send ${send.length} colour${send.length>1?"s":""} to Production</button>${items.some(o => can("edit", o)) ? `<span class="hint">Edit a colour by clicking its name.</span>` : ""}</div></div>`;
+  const toWithdraw = items.filter(o => can("withdraw", o));
+  if (toWithdraw.length) acts += `<div class="panel" style="border-color:var(--warn)"><b>${toWithdraw.length} change${toWithdraw.length>1?"s":""} waiting for Production</b>${toWithdraw.map(o => `<div>${esc(o.color)}: ${o.pendingChange.kind==="cancel"?"cancel":esc(diffText(o.pendingChange.from, o.pendingChange.sizes))}${o.pendingChange.note?` — “${esc(o.pendingChange.note)}”`:""}</div>`).join("")}<div class="hint">Sent by mistake? Withdraw it: the colours stay exactly as they were and nothing is cancelled.</div><div class="acts"><button class="btn primary" data-sact="withdrawAll" type="button">↺ Withdraw ${toWithdraw.length} change${toWithdraw.length>1?"s":""} (undo)</button></div></div>`;
   if (pend.length) acts += `<div class="panel" style="border-color:var(--bad);background:var(--bad-soft)"><b>${pend.length} change${pend.length>1?"s":""} from Planning to confirm</b>${pend.map(o => `<div>${esc(o.color)}: ${o.pendingChange.kind==="cancel"?"cancel":esc(diffText(o.pendingChange.from, o.pendingChange.sizes))}${o.pendingChange.note?` — “${esc(o.pendingChange.note)}”`:""}</div>`).join("")}<div class="acts"><button class="btn primary" data-sact="confirmAll" type="button">Confirm all</button><button class="btn" data-sact="rejectAll" type="button">Can't do it</button></div><div class="hint">“Can't do it” needs a reason in the comment box.</div></div>`;
   if (toApprove.length) acts += `<div class="panel"><b>Approve &amp; schedule ${toApprove.length} colour${toApprove.length>1?"s":""}</b><div class="grid2">
       <label>Factory<span class="facpick"><input class="inp" id="spFactory" list="dlFactories" value="${esc(p0.factory||o0.factory||"")}" placeholder="Choose or type a factory"><button class="btn sm" type="button" data-addfac="spFactory" title="Add a new factory">+ Add</button></span></label>
@@ -1728,6 +1730,7 @@ async function onStyleAct(act){
   }
   else if (act === "confirmAll") await run(items.filter(o => can("confirmChange", o)), o => confirmChange(o, withNote("Production confirmed")), "Confirmed");
   else if (act === "rejectAll") { if (!note) { toast("Write the reason in the comment box first."); return; } await run(items.filter(o => can("confirmChange", o)), async o => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, "Production could not apply the change — " + note); }, "Declined"); }
+  else if (act === "withdrawAll") { const list = items.filter(o => can("withdraw", o)); confirmBox(`Withdraw ${list.length} change${list.length===1?"":"s"}?`, "The colours stay as they are now; Production no longer sees the request.", "Withdraw", () => run(list, async o => { await S.db.doc("orders/" + o.id).update({pendingChange:null, updatedAt:Date.now(), updatedBy:S.me.id}); await logEvent(o.id, withNote("Change request withdrawn")); }, "Withdrawn")); }
   else if (act === "reopenAll") { const list = items.filter(o => can("reopen", o)); confirmBox(`Restock ${list.length} colour${list.length===1?"":"s"} again?`, "Cancelled → Draft (edit, then send to Production). Closed short → Partly received.", "Restock again", () => run(list, o => reopenOrder(o, withNote("Restocked again (whole style)")), "Restocked again")); }
   else if (act === "cancelAll") confirmBox("Cancel the colours not yet sent?", "They stay in the history as cancelled.", "Cancel them", () => run(items.filter(o => can("cancel", o)), o => setStatus(o, "cancelled", {prevStatus:o.status}, withNote("Request cancelled (whole style)")), "Cancelled"));
 }

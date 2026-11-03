@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="placeholder.png">
-<script src="config.js?v=6"></script>
-<script src="rh-boot.js?v=6"></script>
-<script type="module" src="firebase-shim.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="rh-boot.js?v=7"></script>
+<script type="module" src="firebase-shim.js?v=7"></script>
 <title>CLOUD Restock Hub</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1556,7 +1556,7 @@ function matrixHTML(items, mode){
 function renderStyleDrawer(){
   const items = styleItems(S.openStyle); const L = $("#layer");
   if (!items.length) { S.openStyle = null; L.innerHTML = ""; return; }
-  const keep = {}; L.querySelectorAll("input,textarea,select").forEach(el => { if (el.id) keep[el.id] = el.value; });
+  const keep = {}; const fresh = S.clearRecvAt && Date.now() - S.clearRecvAt < 4000; L.querySelectorAll("input,textarea,select").forEach(el => { if (el.id && !(fresh && el.id.startsWith("src-"))) keep[el.id] = el.value; });
   const o0 = items[0], by = st => items.filter(o => st.includes(o.status));
   const send = items.filter(o => can("submit", o) && qtyOf(o) > 0), toApprove = items.filter(o => can("prodReview", o)), toStart = items.filter(o => can("start", o)),
         toRecv = items.filter(o => can("receive", o)), toChange = items.filter(o => can("change", o)), pend = items.filter(o => can("confirmChange", o)),
@@ -1621,7 +1621,7 @@ async function onStyleAct(act){
     const list = items.filter(o => can("receive", o) && m[o.id] && sumObj(m[o.id]) > 0);
     if (!list.length) { toast("Type the received pieces in the table first."); return; }
     const ok = await run(list, o => applyReceipt(o, m[o.id], date, withNote("")), "Delivery recorded");
-    if (ok) { document.querySelectorAll("[data-src]").forEach(i => i.value = ""); S.styleMode = "receive"; renderStyleDrawer(); }
+    if (ok) { S.clearRecvAt = Date.now(); document.querySelectorAll("[data-src]").forEach(i => i.value = ""); S.styleMode = "receive"; renderStyleDrawer(); }
   }
   else if (act === "sendChange") {
     const m = readMatrix("sch"), why = ($("#sChNote").value||"").trim().slice(0,1000);
